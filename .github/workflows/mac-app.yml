@@ -69,4 +69,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: Mappe Mentali ${{ github.ref_name }}
           files: desktop/dist/*.dmg
+          body: |
+            ## Scarica
+            - **MappeMentali-AppleSilicon.dmg** → Mac con chip M1, M2, M3, M4…
+            - **MappeMentali-Intel.dmg** → Mac con processore Intel
+
+            ## Installa
+            1. Apri il `.dmg` e trascina **Mappe Mentali** nella cartella **Applicazioni**.
+            2. Al primo avvio macOS blocca l'app (non è firmata con un certificato Apple a pagamento):
+               apri **Impostazioni di Sistema → Privacy e sicurezza** e clicca **Apri comunque**.
+            3. Dalla volta successiva si apre normalmente.
+
+            In alternativa, da Terminale: `xattr -dr com.apple.quarantine "/Applications/Mappe Mentali.app"`
