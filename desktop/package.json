@@ -1,0 +1,30 @@
+{
+  "name": "mappe-mentali",
+  "productName": "Mappe Mentali",
+  "version": "1.0.0",
+  "description": "Mappe mentali semplici e colorate: nodi, collegamenti, immagini, icone, note ed esportazione PNG/PDF.",
+  "author": "AlanP80",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "sync": "node sync.js",
+    "start": "npm run sync && electron .",
+    "dist:mac": "npm run sync && electron-builder --mac dir --arm64 --x64"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "it.alanp80.mappementali",
+    "productName": "Mappe Mentali",
+    "copyright": "AlanP80",
+    "files": ["main.js", "app/**"],
+    "directories": { "buildResources": "build", "output": "dist" },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": null
+    }
+  }
+}
