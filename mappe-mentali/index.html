@@ -1,0 +1,1550 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mappe Mentali</title>
+<style>
+  :root {
+    --bg: #f5f6fb;
+    --grid: #dde1ee;
+    --panel: #ffffff;
+    --ink: #1f2433;
+    --muted: #6b7285;
+    --line: #e4e7f0;
+    --accent: #6d5efc;
+    --accent-soft: #eeecff;
+    --danger: #e5484d;
+    --shadow: 0 6px 24px rgba(30, 35, 60, .10), 0 1px 3px rgba(30, 35, 60, .08);
+    --font: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+  body.dark {
+    --bg: #141724;
+    --grid: #262b3f;
+    --panel: #1e2233;
+    --ink: #eef0f7;
+    --muted: #9aa1b8;
+    --line: #2f3550;
+    --accent-soft: #2c2852;
+    --shadow: 0 6px 24px rgba(0, 0, 0, .35), 0 1px 3px rgba(0, 0, 0, .3);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- Barra superiore ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+    z-index: 5;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 16px; margin-right: 10px; white-space: nowrap;
+  }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: linear-gradient(135deg, #6d5efc, #ff5c8a 60%, #ffb13d);
+    display: grid; place-items: center;
+  }
+  .sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+  .spacer { flex: 1; }
+  button {
+    font: inherit; font-size: 13.5px; color: var(--ink);
+    background: transparent; border: 1px solid transparent; border-radius: 9px;
+    padding: 6px 10px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  button:hover { background: var(--accent-soft); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .35; pointer-events: none; }
+  button svg { width: 18px; height: 18px; flex: none; }
+  button.primary { background: var(--accent); color: #fff; }
+  button.primary:hover { background: #5b4be8; }
+  button.danger { color: var(--danger); }
+  button.on { background: var(--accent-soft); color: var(--accent); }
+  .ico { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- Area di disegno ---------- */
+  #stage { position: relative; flex: 1; overflow: hidden; }
+  #canvas {
+    width: 100%; height: 100%; display: block; touch-action: none;
+    background-color: var(--bg);
+    background-image: radial-gradient(circle, var(--grid) 1.3px, transparent 1.4px);
+    cursor: grab;
+    user-select: none; -webkit-user-select: none;
+  }
+  #canvas:focus { outline: none; }
+  #canvas.panning { cursor: grabbing; }
+  .node { cursor: pointer; }
+  .node .handle { opacity: 0; transition: opacity .15s; cursor: crosshair; }
+  .node:hover .handle, .node.selected .handle { opacity: 1; }
+  .edge { cursor: pointer; }
+  #stage.dropping::after {
+    content: 'Rilascia l\'immagine qui'; position: absolute; inset: 12px; border: 3px dashed var(--accent);
+    border-radius: 18px; display: grid; place-items: center; font-weight: 700; color: var(--accent);
+    background: rgba(109, 94, 252, .06); pointer-events: none; font-size: 18px;
+  }
+
+  #editor {
+    position: absolute; display: none; z-index: 4;
+    border: none; outline: none; resize: none; overflow: hidden;
+    text-align: center; white-space: pre; font-family: var(--font);
+    border-radius: 14px;
+    box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--accent);
+  }
+
+  /* ---------- Pannelli flottanti ---------- */
+  .float {
+    position: absolute; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: var(--shadow); padding: 6px;
+    display: flex; align-items: center; gap: 4px; z-index: 3;
+  }
+  #zoomBar { left: 16px; bottom: 16px; }
+  #zoomLabel { min-width: 48px; text-align: center; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  #nodeBar, #edgeBar {
+    left: 50%; bottom: 16px; transform: translateX(-50%);
+    flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 32px);
+  }
+  .swatches { display: flex; gap: 5px; padding: 0 6px; flex-wrap: wrap; }
+  .swatch {
+    width: 24px; height: 24px; border-radius: 50%; padding: 0; border: 2px solid var(--panel);
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  .swatch:hover { transform: scale(1.12); background: inherit; }
+  .swatch.active { box-shadow: 0 0 0 2px var(--ink); }
+
+  #hint {
+    right: 16px; bottom: 16px; font-size: 12.5px; color: var(--muted);
+    padding: 10px 14px; display: block; max-width: 310px; line-height: 1.5;
+  }
+  #hint b { color: var(--ink); }
+
+  /* Pannello note */
+  #notesPanel {
+    right: 16px; top: 16px; bottom: 84px; width: 320px; max-width: calc(100% - 32px);
+    flex-direction: column; align-items: stretch; padding: 12px; gap: 8px; display: none;
+  }
+  #notesPanel.open { display: flex; }
+  #notesPanel .head { display: flex; align-items: center; gap: 8px; }
+  #notesPanel .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  #notesPanel .title { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #notesText {
+    flex: 1; resize: none; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+    font: 14px/1.55 var(--font); background: var(--bg); color: var(--ink); outline: none;
+  }
+  #notesText:focus { border-color: var(--accent); }
+  #notesPanel small { color: var(--muted); font-size: 12px; }
+
+  /* Popover (icone, immagine, PDF) */
+  #pop {
+    position: fixed; display: none; z-index: 8; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: var(--shadow); padding: 10px; max-width: calc(100vw - 24px);
+  }
+  #pop h4 { margin: 2px 4px 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .emoji-grid { display: grid; grid-template-columns: repeat(8, 36px); gap: 2px; }
+  .emoji-grid button { font-size: 20px; padding: 4px; justify-content: center; width: 36px; height: 36px; }
+  .menu { display: flex; flex-direction: column; min-width: 230px; }
+  .menu button { justify-content: flex-start; padding: 8px 10px; }
+  .menu .row { display: flex; gap: 4px; }
+  .menu .row button { flex: 1; justify-content: center; }
+  .opt { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+  .opt:hover { background: var(--accent-soft); }
+  .opt input { margin-top: 3px; accent-color: var(--accent); }
+  .opt b { display: block; font-size: 14px; }
+  .opt span { font-size: 12.5px; color: var(--muted); }
+  .opt select { margin-top: 6px; font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .pdf-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); margin-top: 8px; padding: 10px 4px 0; }
+  .pdf-foot label { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+
+  #toast {
+    position: absolute; top: 16px; left: 50%; transform: translate(-50%, -10px);
+    background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 999px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 6;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- Finestra aiuto ---------- */
+  #help {
+    position: fixed; inset: 0; background: rgba(15, 18, 30, .45); display: none;
+    align-items: center; justify-content: center; z-index: 10; padding: 16px;
+  }
+  #help.open { display: flex; }
+  #help .card {
+    background: var(--panel); border-radius: 18px; box-shadow: var(--shadow);
+    max-width: 540px; width: 100%; padding: 22px 24px; max-height: 90vh; overflow: auto;
+  }
+  #help h2 { margin: 0 0 4px; font-size: 20px; }
+  #help p { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+  #help table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  #help td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  #help td:first-child { width: 46%; padding-right: 10px; }
+  kbd {
+    font-family: inherit; font-size: 12px; background: var(--bg); border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px;
+  }
+
+  #printArea { display: none; }
+
+  @media (max-width: 1480px) {
+    #nodeBar, #edgeBar { bottom: 76px; }
+  }
+  @media (max-width: 860px) {
+    header .lbl { display: none; }
+    .brand span { display: none; }
+    #hint { display: none !important; }
+    #nodeBar, #edgeBar { bottom: 76px; }
+    #notesPanel { top: 12px; bottom: auto; height: 45%; right: 16px; }
+  }
+
+  @media print {
+    body { background: #fff; display: block; overflow: visible; }
+    body > *:not(#printArea) { display: none !important; }
+    #printArea { display: flex !important; align-items: center; justify-content: center; height: 100vh; }
+    #printArea img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+  }
+</style>
+<style id="pageStyle"></style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 24 24" class="ico" style="stroke:#fff"><circle cx="12" cy="12" r="3"/><circle cx="4" cy="5" r="2"/><circle cx="20" cy="5" r="2"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="19" r="2"/><path d="M6 6.5 9.5 10M18 6.5 14.5 10M6 17.5 9.5 14M18 17.5 14.5 14"/></svg>
+    </div>
+    <span>Mappe Mentali</span>
+  </div>
+
+  <button id="btnNew" title="Nuova mappa"><svg viewBox="0 0 24 24" class="ico"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M12 12v6M9 15h6"/></svg><span class="lbl">Nuova</span></button>
+  <button id="btnOpen" title="Apri una mappa salvata (.json)"><svg viewBox="0 0 24 24" class="ico"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lbl">Apri</span></button>
+  <button id="btnSave" title="Salva la mappa su file (Ctrl/⌘+S)"><svg viewBox="0 0 24 24" class="ico"><path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8M7 21v-7h10v7"/></svg><span class="lbl">Salva</span></button>
+  <div class="sep"></div>
+  <button id="btnUndo" title="Annulla (Ctrl/⌘+Z)"><svg viewBox="0 0 24 24" class="ico"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+  <button id="btnRedo" title="Ripeti (Ctrl/⌘+Y)"><svg viewBox="0 0 24 24" class="ico"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+  <button id="btnLayout" title="Riordina automaticamente i rami"><svg viewBox="0 0 24 24" class="ico"><rect x="2" y="9" width="7" height="6" rx="1.5"/><rect x="15" y="3" width="7" height="5" rx="1.5"/><rect x="15" y="16" width="7" height="5" rx="1.5"/><path d="M9 12h3M12 5.5v13M12 5.5h3M12 18.5h3"/></svg><span class="lbl">Riordina</span></button>
+
+  <div class="spacer"></div>
+
+  <button id="btnPng" title="Esporta immagine PNG"><svg viewBox="0 0 24 24" class="ico"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg><span class="lbl">PNG</span></button>
+  <button id="btnPdf" title="Esporta PDF (A4, A4 su più pagine, A3)"><svg viewBox="0 0 24 24" class="ico"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg><span class="lbl">PDF</span></button>
+  <button id="btnPrint" title="Stampa"><svg viewBox="0 0 24 24" class="ico"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg><span class="lbl">Stampa</span></button>
+  <div class="sep"></div>
+  <button id="btnTheme" title="Tema chiaro / scuro"><svg viewBox="0 0 24 24" class="ico"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <button id="btnHelp" title="Guida rapida e scorciatoie"><svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></svg></button>
+</header>
+
+<div id="stage">
+  <svg id="canvas" tabindex="0">
+    <defs>
+      <filter id="sh" x="-20%" y="-30%" width="140%" height="170%">
+        <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1e233c" flood-opacity=".18"/>
+      </filter>
+    </defs>
+    <defs id="imgDefs"></defs>
+    <g id="viewport">
+      <g id="content"></g>
+      <path id="tempLink" fill="none" stroke-width="3" stroke-dasharray="7 6" stroke-linecap="round" style="display:none"/>
+    </g>
+  </svg>
+  <textarea id="editor" spellcheck="false"></textarea>
+
+  <div class="float" id="zoomBar">
+    <button id="btnZoomOut" title="Riduci"><svg viewBox="0 0 24 24" class="ico"><path d="M5 12h14"/></svg></button>
+    <span id="zoomLabel">100%</span>
+    <button id="btnZoomIn" title="Ingrandisci"><svg viewBox="0 0 24 24" class="ico"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="btnFit" title="Adatta alla finestra"><svg viewBox="0 0 24 24" class="ico"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </div>
+
+  <div class="float" id="nodeBar" style="display:none">
+    <div class="swatches" id="swatches"></div>
+    <div class="sep"></div>
+    <button id="btnChild" title="Aggiungi un ramo figlio (Tab)"><svg viewBox="0 0 24 24" class="ico"><path d="M12 5v14M5 12h14"/></svg>Figlio</button>
+    <button id="btnSibling" title="Aggiungi un fratello (Invio)"><svg viewBox="0 0 24 24" class="ico"><path d="M12 5v14M5 12h14"/></svg>Fratello</button>
+    <div class="sep"></div>
+    <button id="btnIcon" title="Aggiungi un'icona"><svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg>Icona</button>
+    <button id="btnImage" title="Aggiungi un'immagine (puoi anche trascinarla o incollarla)"><svg viewBox="0 0 24 24" class="ico"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>Immagine</button>
+    <button id="btnNotes" title="Note del nodo"><svg viewBox="0 0 24 24" class="ico"><path d="M5 3h10l4 4v14H5z"/><path d="M9 11h6M9 15h6"/></svg>Note</button>
+    <button id="btnEdit" title="Modifica testo (doppio clic, F2)"><svg viewBox="0 0 24 24" class="ico"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg></button>
+    <button id="btnDelete" class="danger" title="Elimina il nodo e il suo ramo (Canc)"><svg viewBox="0 0 24 24" class="ico"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+  </div>
+
+  <div class="float" id="edgeBar" style="display:none">
+    <button id="btnDeleteEdge" class="danger"><svg viewBox="0 0 24 24" class="ico"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>Elimina collegamento</button>
+  </div>
+
+  <div class="float" id="notesPanel">
+    <div class="head">
+      <span class="dot" id="notesDot"></span>
+      <span class="title" id="notesTitle">Note</span>
+      <button id="btnNotesClose" title="Chiudi"><svg viewBox="0 0 24 24" class="ico"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <textarea id="notesText" placeholder="Scrivi qui dettagli, link, promemoria…"></textarea>
+    <small>Le note compaiono come pagine finali nel PDF.</small>
+  </div>
+
+  <div class="float" id="hint">
+    <b>Doppio clic</b> sul foglio: nuova idea<br>
+    <b>Trascina il pallino +</b> di un nodo: collega o crea<br>
+    <b>Tab</b> figlio · <b>Invio</b> fratello · <b>Canc</b> elimina<br>
+    <b>Trascina o incolla</b> un'immagine sul foglio
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<div id="pop"></div>
+
+<div id="help">
+  <div class="card">
+    <h2>Guida rapida</h2>
+    <p>La mappa si salva da sola. Usa <b>Salva</b> per tenerne una copia su file. Su Mac usa <kbd>⌘</kbd> al posto di <kbd>Ctrl</kbd>.</p>
+    <table>
+      <tr><td>Doppio clic sul foglio</td><td>Crea una nuova idea</td></tr>
+      <tr><td>Trascina il pallino <b>+</b></td><td>Rilascia su un nodo per collegarli, nel vuoto per creare un nodo collegato</td></tr>
+      <tr><td>Clic sul pallino <b>+</b></td><td>Aggiunge subito un figlio</td></tr>
+      <tr><td>Doppio clic su un nodo · <kbd>F2</kbd></td><td>Modifica il testo (o inizia a scrivere)</td></tr>
+      <tr><td><kbd>Tab</kbd> · <kbd>Invio</kbd></td><td>Aggiungi un figlio · un fratello</td></tr>
+      <tr><td><kbd>Maiusc</kbd> + <kbd>Invio</kbd> mentre scrivi</td><td>Va a capo nel nodo</td></tr>
+      <tr><td>Pulsante <b>Icona</b></td><td>Aggiunge un'icona colorata al nodo</td></tr>
+      <tr><td>Trascina un'immagine sul foglio</td><td>Sopra un nodo: la aggiunge al nodo. Nel vuoto: crea un nuovo nodo con l'immagine</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd> con un'immagine copiata</td><td>La aggiunge al nodo selezionato</td></tr>
+      <tr><td>Pulsante <b>Note</b></td><td>Testo lungo collegato al nodo (icona nell'angolo)</td></tr>
+      <tr><td><kbd>Canc</kbd></td><td>Elimina il nodo e il suo ramo (o il collegamento selezionato)</td></tr>
+      <tr><td>Trascina un nodo</td><td>Sposta il nodo con tutto il suo ramo (<kbd>Maiusc</kbd>: solo il nodo)</td></tr>
+      <tr><td><kbd>1</kbd> … <kbd>9</kbd></td><td>Cambia colore al nodo selezionato</td></tr>
+      <tr><td>Frecce</td><td>Passa al nodo vicino</td></tr>
+      <tr><td>Rotellina · pizzico</td><td>Zoom</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> · <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Annulla · Ripeti</td></tr>
+    </table>
+    <div style="text-align:right;margin-top:16px"><button class="primary" id="btnHelpClose">Ho capito</button></div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept=".json,application/json" style="display:none">
+<input type="file" id="imageInput" accept="image/*" style="display:none">
+<div id="printArea"><img alt=""></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ================= Costanti =================
+  const PALETTE = ['#6d5efc', '#ff5c8a', '#ff8a3d', '#ffc53d', '#2ec4b6', '#3a86ff', '#8ac926', '#9b5de5', '#00bbf9', '#ef476f', '#118ab2', '#475569'];
+  const EMOJI = ['💡', '⭐', '✅', '❌', '❓', '❗', '🎯', '🚀', '📌', '📅', '⏰', '💰', '📈', '📉', '🧠', '❤️',
+    '👍', '👎', '🔥', '⚠️', '🔒', '🔑', '📝', '📚', '🎓', '💼', '🏠', '✈️', '🚗', '🍕', '☕', '🎵',
+    '🎨', '📷', '💻', '📱', '⚙️', '🔧', '🌍', '🌱', '☀️', '🌙', '👤', '👥', '💬', '📞', '✉️', '🏆'];
+  const FONT = "'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif";
+  const EMOJI_FONT = "'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
+  const STORE = 'mappe-mentali:v1';
+  const STORE_IMG = 'mappe-mentali:img';
+  const EXPORT_BG = { light: '#ffffff', dark: '#141724' };
+  const IMG_W = { s: 120, m: 200, l: 300 };
+
+  const $ = s => document.querySelector(s);
+  const svg = $('#canvas');
+  const vp = $('#viewport');
+  const content = $('#content');
+  const tempLink = $('#tempLink');
+  const editor = $('#editor');
+
+  // ================= Stato =================
+  // Le immagini stanno in un archivio separato, così la cronologia (annulla) resta leggera
+  let images = {};
+  let state = null;
+  state = loadLocal() || newMap();
+  let view = { x: 0, y: 0, k: 1 };
+  let sel = { type: null, id: null };
+  let undoStack = [], redoStack = [];
+  let editing = null;
+  let drag = null;
+  let notesOpen = false;
+
+  function newMap() {
+    return {
+      version: 2,
+      theme: (state && state.theme) || 'light',
+      nodes: [{ id: uid(), x: 0, y: 0, text: 'Idea centrale', color: PALETTE[0], root: true }],
+      edges: []
+    };
+  }
+  function uid() { return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function isValid(s) {
+    return s && Array.isArray(s.nodes) && Array.isArray(s.edges) &&
+      s.nodes.every(n => n && typeof n.id === 'string' && isFinite(n.x) && isFinite(n.y) && typeof n.text === 'string');
+  }
+  function loadLocal() {
+    try {
+      const s = JSON.parse(localStorage.getItem(STORE));
+      if (!isValid(s)) return null;
+      images = JSON.parse(localStorage.getItem(STORE_IMG)) || {};
+      return s;
+    } catch (e) { return null; }
+  }
+  function usedImages() {
+    const out = {};
+    state.nodes.forEach(n => { if (n.image && images[n.image.id]) out[n.image.id] = images[n.image.id]; });
+    return out;
+  }
+  let lastImgKeys = '';
+  let warnedQuota = false;
+  function saveLocal() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(state));
+      const used = usedImages(), keys = Object.keys(used).sort().join(',');
+      if (keys !== lastImgKeys) { localStorage.setItem(STORE_IMG, JSON.stringify(used)); lastImgKeys = keys; }
+    } catch (e) {
+      if (!warnedQuota) { warnedQuota = true; toast('Memoria piena: usa «Salva» per non perdere la mappa'); }
+    }
+  }
+
+  const node = id => state.nodes.find(n => n.id === id);
+  const parentOf = id => { const e = state.edges.find(e => e.to === id); return e ? node(e.from) : null; };
+  const childrenOf = id => state.edges.filter(e => e.from === id).map(e => node(e.to)).filter(Boolean);
+  const rootNode = () => state.nodes.find(n => n.root) || state.nodes[0];
+
+  function subtree(id) {
+    const out = [id], seen = new Set(out);
+    for (let i = 0; i < out.length; i++) {
+      for (const e of state.edges) {
+        if (e.from === out[i] && !seen.has(e.to) && !(node(e.to) || {}).root) { seen.add(e.to); out.push(e.to); }
+      }
+    }
+    return out;
+  }
+  // Nodi in ordine di lettura: dalla radice, ramo per ramo
+  function orderedNodes() {
+    const r = rootNode(); if (!r) return [];
+    const out = [], seen = new Set();
+    const visit = id => {
+      if (seen.has(id)) return; seen.add(id); out.push(node(id));
+      childrenOf(id).sort((a, b) => a.y - b.y).forEach(c => visit(c.id));
+    };
+    visit(r.id);
+    state.nodes.forEach(n => { if (!seen.has(n.id)) visit(n.id); });
+    return out.filter(Boolean);
+  }
+
+  // ================= Cronologia =================
+  const snapshot = () => JSON.stringify(state);
+  function pushUndo(snap) { undoStack.push(snap); if (undoStack.length > 150) undoStack.shift(); redoStack = []; }
+  function commit() { pushUndo(snapshot()); }
+  function undo() {
+    if (editing) finishEdit(true);
+    if (!undoStack.length) return;
+    redoStack.push(snapshot()); state = JSON.parse(undoStack.pop()); fixSel(); changed();
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snapshot()); state = JSON.parse(redoStack.pop()); fixSel(); changed();
+  }
+  function fixSel() {
+    if (sel.type === 'node' && !node(sel.id)) sel = { type: null, id: null };
+    if (sel.type === 'edge' && !state.edges.find(e => e.id === sel.id)) sel = { type: null, id: null };
+  }
+  function changed() { draw(); saveLocal(); updateUI(); }
+
+  // ================= Misure e disegno =================
+  const mctx = document.createElement('canvas').getContext('2d');
+  function measure(n) {
+    const fs = n.root ? 22 : 16;
+    mctx.font = `${n.root ? 700 : 600} ${fs}px ${FONT}`;
+    const lines = (n.text || ' ').split('\n');
+    const tw = Math.ceil(Math.max(...lines.map(l => mctx.measureText(l || ' ').width)));
+    const lh = Math.round(fs * 1.3);
+    const padX = n.root ? 28 : 18, padY = n.root ? 16 : 10;
+    const iconW = n.icon ? Math.round(fs * 1.35) + 6 : 0;
+    const textH = lines.length * lh;
+    const meta = n.image && images[n.image.id];
+    let iw = 0, ih = 0;
+    if (meta) {
+      iw = IMG_W[n.image.size] || IMG_W.m;
+      ih = Math.round(iw * meta.h / meta.w);
+      if (ih > iw * 1.4) { ih = Math.round(iw * 1.4); iw = Math.round(ih * meta.w / meta.h); }
+    }
+    const IP = 8;
+    const w = Math.max(tw + iconW + padX * 2, meta ? iw + IP * 2 : 0, n.root ? 150 : 64);
+    const h = textH + padY * 2 + (meta ? ih + IP : 0);
+    const top = -h / 2;
+    return {
+      w, h, lines, fs, lh, padX, padY, tw, iconW, textH,
+      textCY: top + (meta ? IP + ih : 0) + padY + textH / 2,
+      img: meta ? n.image.id : null, iw, ih, imgY: top + IP,
+      rx: (lines.length > 1 || meta) ? 16 : h / 2
+    };
+  }
+
+  function textColor(hex) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 178 ? '#1f2433' : '#ffffff';
+  }
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const f = v => Math.round(v * 10) / 10;
+
+  // Ramo "a pennello": spesso alla partenza, sottile all'arrivo
+  function branchShape(a, b, w1, w2) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    if (Math.abs(dx) >= Math.abs(dy) * 0.6) {
+      const c = dx / 2;
+      return `M${f(a.x)},${f(a.y - w1)} C${f(a.x + c)},${f(a.y - w1)} ${f(b.x - c)},${f(b.y - w2)} ${f(b.x)},${f(b.y - w2)}` +
+        ` L${f(b.x)},${f(b.y + w2)} C${f(b.x - c)},${f(b.y + w2)} ${f(a.x + c)},${f(a.y + w1)} ${f(a.x)},${f(a.y + w1)} Z`;
+    }
+    const c = dy / 2;
+    return `M${f(a.x - w1)},${f(a.y)} C${f(a.x - w1)},${f(a.y + c)} ${f(b.x - w2)},${f(b.y - c)} ${f(b.x - w2)},${f(b.y)}` +
+      ` L${f(b.x + w2)},${f(b.y)} C${f(b.x + w2)},${f(b.y - c)} ${f(a.x + w1)},${f(a.y + c)} ${f(a.x + w1)},${f(a.y)} Z`;
+  }
+  function centerLine(a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    if (Math.abs(dx) >= Math.abs(dy) * 0.6) { const c = dx / 2; return `M${f(a.x)},${f(a.y)} C${f(a.x + c)},${f(a.y)} ${f(b.x - c)},${f(b.y)} ${f(b.x)},${f(b.y)}`; }
+    const c = dy / 2; return `M${f(a.x)},${f(a.y)} C${f(a.x)},${f(a.y + c)} ${f(b.x)},${f(b.y - c)} ${f(b.x)},${f(b.y)}`;
+  }
+
+  function imageSymbol(id) {
+    const m = images[id];
+    return `<symbol id="sym-${id}" viewBox="0 0 ${m.w} ${m.h}" preserveAspectRatio="xMidYMid slice"><image href="${m.src}" width="${m.w}" height="${m.h}"/></symbol>`;
+  }
+  const shownSymbols = new Set();
+  function refreshImgDefs() {
+    const defs = $('#imgDefs');
+    for (const id of Object.keys(images)) {
+      if (shownSymbols.has(id)) continue;
+      shownSymbols.add(id);
+      defs.insertAdjacentHTML('beforeend', imageSymbol(id));
+    }
+  }
+
+  function markup(forExport) {
+    let edges = '', nodes = '';
+    const theme = state.theme === 'dark' ? 'dark' : 'light';
+    for (const e of state.edges) {
+      const a = node(e.from), b = node(e.to);
+      if (!a || !b) continue;
+      const isSel = !forExport && sel.type === 'edge' && sel.id === e.id;
+      const line = centerLine(a, b);
+      edges += `<g class="edge" data-edge="${esc(e.id)}">` +
+        (forExport ? '' : `<path d="${line}" fill="none" stroke="transparent" stroke-width="18"/>`) +
+        (isSel ? `<path d="${line}" fill="none" stroke="${theme === 'dark' ? '#fff' : '#1f2433'}" stroke-width="2" stroke-dasharray="6 6" opacity=".7"/>` : '') +
+        `<path d="${branchShape(a, b, a.root ? 6 : 4, 1.6)}" fill="${b.color}" opacity="${isSel ? 1 : 0.85}"/></g>`;
+    }
+    for (const n of state.nodes) {
+      const d = measure(n);
+      const w = d.w, h = d.h, rx = d.rx;
+      const isSel = !forExport && sel.type === 'node' && sel.id === n.id;
+      const tc = textColor(n.color);
+      const sid = esc(n.id);
+      let g = `<g class="node${isSel ? ' selected' : ''}" data-node="${sid}" transform="translate(${f(n.x)},${f(n.y)})">`;
+      if (isSel) g += `<rect x="${f(-w / 2 - 5)}" y="${f(-h / 2 - 5)}" width="${f(w + 10)}" height="${f(h + 10)}" rx="${f(rx + 5)}" fill="none" stroke="${n.color}" stroke-width="2.5" stroke-dasharray="5 4"/>`;
+      g += `<rect x="${f(-w / 2)}" y="${f(-h / 2)}" width="${f(w)}" height="${f(h)}" rx="${f(rx)}" fill="${n.color}" filter="url(#sh)"/>`;
+      if (n.root) g += `<rect x="${f(-w / 2 + 3)}" y="${f(-h / 2 + 3)}" width="${f(w - 6)}" height="${f(h - 6)}" rx="${f(Math.max(0, rx - 3))}" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.5"/>`;
+      if (d.img) {
+        g += `<clipPath id="clip-${sid}"><rect x="${f(-d.iw / 2)}" y="${f(d.imgY)}" width="${d.iw}" height="${d.ih}" rx="10"/></clipPath>` +
+          `<g clip-path="url(#clip-${sid})"><rect x="${f(-d.iw / 2)}" y="${f(d.imgY)}" width="${d.iw}" height="${d.ih}" fill="#fff"/>` +
+          `<use href="#sym-${d.img}" x="${f(-d.iw / 2)}" y="${f(d.imgY)}" width="${d.iw}" height="${d.ih}"/></g>`;
+      }
+      const blockL = -(d.iconW + d.tw) / 2;
+      if (n.icon) {
+        g += `<text x="${f(blockL + (d.iconW - 6) / 2)}" y="${f(d.textCY)}" text-anchor="middle" dominant-baseline="central" font-family="${EMOJI_FONT}" font-size="${f(d.fs * 1.1)}">${esc(n.icon)}</text>`;
+      }
+      const tx = blockL + d.iconW + d.tw / 2;
+      const y0 = d.textCY - ((d.lines.length - 1) * d.lh) / 2;
+      g += `<text text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${d.fs}" font-weight="${n.root ? 700 : 600}" fill="${tc}">`;
+      d.lines.forEach((l, i) => { g += `<tspan x="${f(tx)}" y="${f(y0 + i * d.lh)}">${esc(l) || ' '}</tspan>`; });
+      g += `</text>`;
+      if (n.note && n.note.trim()) {
+        g += `<g transform="translate(${f(w / 2 - 6)},${f(-h / 2 + 6)})">` +
+          (forExport ? '' : `<title>${esc(n.note.trim().slice(0, 300))}</title>`) +
+          `<circle r="10" fill="#fff" stroke="${n.color}" stroke-width="2"/>` +
+          `<path d="M-4,-3H4M-4,0H4M-4,3H1.5" stroke="${n.color}" stroke-width="1.8" stroke-linecap="round"/></g>`;
+      }
+      if (!forExport) {
+        g += `<g class="handle" data-handle="${sid}" transform="translate(${f(w / 2 + 14)},0)">` +
+          `<circle r="10" fill="${theme === 'dark' ? '#1e2233' : '#fff'}" stroke="${n.color}" stroke-width="2.5"/>` +
+          `<path d="M-4.5,0H4.5M0,-4.5V4.5" stroke="${n.color}" stroke-width="2.5" stroke-linecap="round"/></g>`;
+      }
+      nodes += g + '</g>';
+    }
+    return edges + nodes;
+  }
+
+  function draw() {
+    document.body.classList.toggle('dark', state.theme === 'dark');
+    refreshImgDefs();
+    content.innerHTML = markup(false);
+    if (editing) positionEditor();
+  }
+
+  // ================= Vista (pan & zoom) =================
+  function applyView() {
+    vp.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
+    const g = 26 * view.k;
+    svg.style.backgroundSize = `${g}px ${g}px`;
+    svg.style.backgroundPosition = `${view.x}px ${view.y}px`;
+    $('#zoomLabel').textContent = Math.round(view.k * 100) + '%';
+    if (editing) positionEditor();
+  }
+  function zoomAt(cx, cy, factor) {
+    const k2 = Math.min(4, Math.max(0.15, view.k * factor));
+    view.x = cx - (cx - view.x) * (k2 / view.k);
+    view.y = cy - (cy - view.y) * (k2 / view.k);
+    view.k = k2; applyView();
+  }
+  function bounds() {
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    for (const n of state.nodes) {
+      const d = measure(n);
+      x1 = Math.min(x1, n.x - d.w / 2); x2 = Math.max(x2, n.x + d.w / 2 + (n.note ? 6 : 0));
+      y1 = Math.min(y1, n.y - d.h / 2 - (n.note ? 6 : 0)); y2 = Math.max(y2, n.y + d.h / 2);
+    }
+    if (!isFinite(x1)) return { x: -100, y: -50, w: 200, h: 100 };
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+  }
+  function fit() {
+    const r = svg.getBoundingClientRect(), b = bounds(), pad = 80;
+    const k = Math.min(1.4, Math.max(0.15, Math.min((r.width - pad * 2) / b.w, (r.height - pad * 2) / b.h)));
+    view.k = k;
+    view.x = r.width / 2 - (b.x + b.w / 2) * k;
+    view.y = r.height / 2 - (b.y + b.h / 2) * k;
+    applyView();
+  }
+  function toWorld(cx, cy) {
+    const r = svg.getBoundingClientRect();
+    return { x: (cx - r.left - view.x) / view.k, y: (cy - r.top - view.y) / view.k };
+  }
+  function viewCenter() { const r = svg.getBoundingClientRect(); return toWorld(r.left + r.width / 2, r.top + r.height / 2); }
+  function ensureVisible(n) {
+    const r = svg.getBoundingClientRect(), d = measure(n), m = 60;
+    const sx = view.x + n.x * view.k, sy = view.y + n.y * view.k;
+    const hw = d.w * view.k / 2 + m, hh = d.h * view.k / 2 + m;
+    if (sx - hw < 0) view.x += hw - sx;
+    if (sx + hw > r.width) view.x -= sx + hw - r.width;
+    if (sy - hh < 0) view.y += hh - sy;
+    if (sy + hh > r.height - 70) view.y -= sy + hh - (r.height - 70);
+    applyView();
+  }
+
+  // ================= Operazioni sui nodi =================
+  function overlaps(x, y, w, h, ignore) {
+    return state.nodes.some(n => {
+      if (n.id === ignore) return false;
+      const d = measure(n);
+      return Math.abs(n.x - x) < (d.w + w) / 2 + 12 && Math.abs(n.y - y) < (d.h + h) / 2 + 10;
+    });
+  }
+  function freeSpot(x, y, w, h, dirY) {
+    for (let i = 0; i < 80 && overlaps(x, y, w, h); i++) y += (dirY || 1) * 18;
+    return { x, y };
+  }
+
+  function makeNode(x, y, color, text) {
+    const n = { id: uid(), x, y, text: text || 'Nuova idea', color };
+    state.nodes.push(n);
+    return n;
+  }
+  function linkNodes(from, to) {
+    if (from === to) return false;
+    if (state.edges.some(e => (e.from === from && e.to === to) || (e.from === to && e.to === from))) return false;
+    state.edges.push({ id: uid(), from, to });
+    return true;
+  }
+  function colorFor(parent) {
+    if (parent.root) {
+      const used = childrenOf(parent.id).map(c => c.color);
+      return PALETTE.find(c => c !== parent.color && !used.includes(c)) || PALETTE[(used.length + 1) % PALETTE.length];
+    }
+    return parent.color;
+  }
+
+  function addChild(pid) {
+    const p = node(pid); if (!p) return;
+    commit();
+    const pd = measure(p), gp = parentOf(pid);
+    let dir;
+    if (gp) dir = Math.sign(p.x - gp.x) || 1;
+    else {
+      const kids = childrenOf(pid);
+      const right = kids.filter(k => k.x >= p.x).length;
+      dir = right <= kids.length - right ? 1 : -1;
+    }
+    const td = measure({ text: 'Nuova idea' });
+    const x = p.x + dir * (pd.w / 2 + 90 + td.w / 2);
+    const side = childrenOf(pid).filter(k => Math.sign(k.x - p.x) === dir);
+    let y = p.y;
+    if (side.length) { const low = side.reduce((a, b) => (b.y > a.y ? b : a)); y = low.y + measure(low).h / 2 + td.h / 2 + 14; }
+    const pos = freeSpot(x, y, td.w, td.h, 1);
+    const n = makeNode(pos.x, pos.y, colorFor(p));
+    linkNodes(pid, n.id);
+    select('node', n.id, true);
+    changed(); ensureVisible(n); startEdit(n.id, null, true);
+  }
+
+  function addSibling(id) {
+    const n = node(id); if (!n) return;
+    const p = parentOf(id);
+    if (!p) return addChild(id);
+    commit();
+    const d = measure(n), td = measure({ text: 'Nuova idea' });
+    const pos = freeSpot(n.x, n.y + d.h / 2 + td.h / 2 + 14, td.w, td.h, 1);
+    const s = makeNode(pos.x, pos.y, n.color);
+    linkNodes(p.id, s.id);
+    select('node', s.id, true);
+    changed(); ensureVisible(s); startEdit(s.id, null, true);
+  }
+
+  function createAt(x, y, fromId) {
+    commit();
+    const from = fromId ? node(fromId) : null;
+    const color = from ? colorFor(from) : PALETTE[(state.nodes.length) % PALETTE.length];
+    const n = makeNode(x, y, color);
+    if (from) linkNodes(from.id, n.id);
+    select('node', n.id, true);
+    changed(); startEdit(n.id, null, true);
+  }
+
+  function deleteSelected() {
+    if (sel.type === 'edge') {
+      commit();
+      state.edges = state.edges.filter(e => e.id !== sel.id);
+      sel = { type: null, id: null }; changed(); toast('Collegamento eliminato · Ctrl+Z per annullare');
+      return;
+    }
+    if (sel.type !== 'node') return;
+    const n = node(sel.id); if (!n) return;
+    if (n.root) { toast("L'idea centrale non si può eliminare"); return; }
+    commit();
+    const parent = parentOf(n.id);
+    const del = new Set(subtree(n.id));
+    state.nodes = state.nodes.filter(x => !del.has(x.id));
+    state.edges = state.edges.filter(e => !del.has(e.from) && !del.has(e.to));
+    sel = parent ? { type: 'node', id: parent.id } : { type: null, id: null };
+    changed();
+    toast(del.size > 1 ? `Eliminati ${del.size} nodi · Ctrl+Z per annullare` : 'Nodo eliminato · Ctrl+Z per annullare');
+  }
+
+  function setColor(c) {
+    if (sel.type !== 'node') return;
+    const n = node(sel.id); if (!n || n.color === c) return;
+    commit();
+    // Ricolora anche i figli che avevano lo stesso colore del ramo
+    const ids = n.root ? [n.id] : subtree(n.id).filter(id => node(id).color === n.color);
+    ids.forEach(id => { node(id).color = c; });
+    changed();
+  }
+
+  function setIcon(icon) {
+    const n = sel.type === 'node' && node(sel.id); if (!n) return;
+    if ((n.icon || '') === (icon || '')) return;
+    commit();
+    if (icon) n.icon = icon; else delete n.icon;
+    changed();
+  }
+
+  // ================= Immagini =================
+  function readImage(file) {
+    return new Promise((resolve, reject) => {
+      if (!file || !/^image\//.test(file.type)) return reject(new Error('non immagine'));
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          // Ridimensiona per tenere leggero il file della mappa
+          const max = 900, k = Math.min(1, max / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+          const w = Math.max(1, Math.round((img.naturalWidth || 300) * k)), h = Math.max(1, Math.round((img.naturalHeight || 300) * k));
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          const keepAlpha = /png|gif|svg|webp/.test(file.type);
+          if (!keepAlpha) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }
+          ctx.drawImage(img, 0, 0, w, h);
+          const src = keepAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.86);
+          const id = 'img' + uid();
+          images[id] = { src, w, h };
+          refreshImgDefs();
+          resolve(id);
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  async function attachImage(nodeId, file) {
+    try {
+      const id = await readImage(file);
+      const n = node(nodeId); if (!n) return;
+      commit();
+      n.image = { id, size: (n.image && n.image.size) || 'm' };
+      select('node', n.id, true); changed(); ensureVisible(n);
+      toast('Immagine aggiunta');
+    } catch (e) { toast('Non riesco a leggere questa immagine'); }
+  }
+  async function imageNodeAt(x, y, file) {
+    try {
+      const id = await readImage(file);
+      commit();
+      const n = makeNode(x, y, PALETTE[state.nodes.length % PALETTE.length], (file.name || 'Immagine').replace(/\.[^.]+$/, '').slice(0, 40) || 'Immagine');
+      n.image = { id, size: 'm' };
+      select('node', n.id, true); changed();
+      toast('Nodo con immagine creato · trascina il pallino + per collegarlo');
+    } catch (e) { toast('Non riesco a leggere questa immagine'); }
+  }
+  function setImageSize(size) {
+    const n = sel.type === 'node' && node(sel.id); if (!n || !n.image || n.image.size === size) return;
+    commit(); n.image.size = size; changed();
+  }
+  function removeImage() {
+    const n = sel.type === 'node' && node(sel.id); if (!n || !n.image) return;
+    commit(); delete n.image; changed();
+  }
+
+  // Trascina e rilascia immagini sul foglio
+  const stage = $('#stage');
+  let dragDepth = 0;
+  const hasFiles = ev => ev.dataTransfer && [...ev.dataTransfer.types].includes('Files');
+  stage.addEventListener('dragenter', ev => { if (!hasFiles(ev)) return; ev.preventDefault(); dragDepth++; stage.classList.add('dropping'); });
+  stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; stage.classList.remove('dropping'); } });
+  stage.addEventListener('dragover', ev => { if (hasFiles(ev)) ev.preventDefault(); });
+  stage.addEventListener('drop', ev => {
+    if (!hasFiles(ev)) return;
+    ev.preventDefault(); dragDepth = 0; stage.classList.remove('dropping');
+    const files = [...ev.dataTransfer.files].filter(fl => /^image\//.test(fl.type));
+    if (!files.length) {
+      const json = [...ev.dataTransfer.files].find(fl => /json/.test(fl.type) || /\.json$/i.test(fl.name));
+      if (json) openMapFile(json); else toast('Trascina un file immagine (JPG, PNG, GIF…)');
+      return;
+    }
+    const over = document.elementFromPoint(ev.clientX, ev.clientY);
+    const target = over && over.closest('[data-node]');
+    if (target) { attachImage(target.dataset.node, files[0]); return; }
+    const p = toWorld(ev.clientX, ev.clientY);
+    files.forEach((fl, i) => imageNodeAt(p.x + i * 40, p.y + i * 40, fl));
+  });
+  // Incolla un'immagine dagli appunti
+  document.addEventListener('paste', ev => {
+    if (editing || /TEXTAREA|INPUT/.test((ev.target || {}).tagName || '')) return;
+    const item = [...(ev.clipboardData ? ev.clipboardData.items : [])].find(i => /^image\//.test(i.type));
+    if (!item) return;
+    ev.preventDefault();
+    const file = item.getAsFile();
+    if (sel.type === 'node') attachImage(sel.id, file);
+    else { const c = viewCenter(); imageNodeAt(c.x, c.y, file); }
+  });
+  $('#imageInput').addEventListener('change', ev => {
+    const file = ev.target.files[0]; ev.target.value = '';
+    if (file && sel.type === 'node') attachImage(sel.id, file);
+  });
+
+  // ================= Riordino automatico =================
+  function autoLayout() {
+    const root = rootNode(); if (!root) return;
+    commit();
+    const kids = {}, seen = new Set([root.id]), queue = [root.id];
+    while (queue.length) {
+      const id = queue.shift(); kids[id] = [];
+      for (const e of state.edges) {
+        const other = e.from === id ? e.to : (e.to === id ? e.from : null);
+        if (other && !seen.has(other) && node(other)) { seen.add(other); kids[id].push(other); queue.push(other); }
+      }
+      kids[id].sort((a, b) => node(a).y - node(b).y);
+    }
+    const GAPY = 16, GAPX = 80;
+    const hcache = {};
+    const sh = id => hcache[id] ??= Math.max(measure(node(id)).h, kids[id].reduce((s, c) => s + sh(c), 0) + GAPY * Math.max(0, kids[id].length - 1));
+    function place(id, dir) {
+      const n = node(id), d = measure(n), list = kids[id];
+      const total = list.reduce((s, c) => s + sh(c), 0) + GAPY * Math.max(0, list.length - 1);
+      let y = n.y - total / 2;
+      for (const c of list) {
+        const cn = node(c), cd = measure(cn), h = sh(c);
+        cn.x = n.x + dir * (d.w / 2 + GAPX + cd.w / 2);
+        cn.y = y + h / 2;
+        y += h + GAPY;
+        place(c, dir);
+      }
+    }
+    // Divide i rami principali tra destra e sinistra
+    let right = kids[root.id].filter(c => node(c).x >= root.x), left = kids[root.id].filter(c => node(c).x < root.x);
+    if (!left.length && right.length > 3) { left = right.filter((_, i) => i % 2 === 1); right = right.filter((_, i) => i % 2 === 0); }
+    else if (!right.length && left.length > 3) { right = left.filter((_, i) => i % 2 === 1); left = left.filter((_, i) => i % 2 === 0); }
+    kids[root.id] = right; place(root.id, 1);
+    kids[root.id] = left; place(root.id, -1);
+    changed(); fit();
+    toast('Mappa riordinata · Ctrl+Z per tornare indietro');
+  }
+
+  // ================= Selezione & UI =================
+  function select(type, id, silent) {
+    sel = { type, id };
+    if (!silent) { draw(); updateUI(); }
+  }
+
+  const swatchBox = $('#swatches');
+  PALETTE.forEach((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'swatch'; b.style.background = c; b.title = i < 9 ? `Colore (${i + 1})` : 'Colore';
+    b.dataset.color = c;
+    b.addEventListener('click', () => setColor(c));
+    swatchBox.appendChild(b);
+  });
+
+  function updateUI() {
+    const n = sel.type === 'node' ? node(sel.id) : null;
+    $('#nodeBar').style.display = n ? 'flex' : 'none';
+    $('#edgeBar').style.display = sel.type === 'edge' ? 'flex' : 'none';
+    $('#hint').style.display = sel.type || notesOpen ? 'none' : '';
+    if (n) {
+      swatchBox.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', s.dataset.color === n.color));
+      $('#btnDelete').disabled = !!n.root;
+      $('#btnSibling').disabled = !parentOf(n.id);
+      $('#btnIcon').classList.toggle('on', !!n.icon);
+      $('#btnImage').classList.toggle('on', !!n.image);
+      $('#btnNotes').classList.toggle('on', notesOpen || !!(n.note && n.note.trim()));
+    }
+    $('#btnUndo').disabled = !undoStack.length;
+    $('#btnRedo').disabled = !redoStack.length;
+    updateNotesPanel();
+  }
+
+  let toastTimer;
+  function toast(msg, ms) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2400);
+  }
+
+  // ================= Note =================
+  const notesText = $('#notesText');
+  let notesFor = null, notesSnap = null;
+  function updateNotesPanel() {
+    const n = sel.type === 'node' ? node(sel.id) : null;
+    const panel = $('#notesPanel');
+    const show = notesOpen && n;
+    panel.classList.toggle('open', !!show);
+    if (!show) { notesFor = null; return; }
+    $('#notesDot').style.background = n.color;
+    $('#notesTitle').textContent = (n.icon ? n.icon + ' ' : '') + n.text.replace(/\n/g, ' ');
+    if (notesFor !== n.id) { notesFor = n.id; notesText.value = n.note || ''; }
+  }
+  notesText.addEventListener('focus', () => { notesSnap = snapshot(); });
+  notesText.addEventListener('input', () => {
+    const n = node(notesFor); if (!n) return;
+    if (notesText.value.trim()) n.note = notesText.value; else delete n.note;
+    draw(); saveLocal();
+  });
+  notesText.addEventListener('blur', () => {
+    if (notesSnap && notesSnap !== snapshot()) { pushUndo(notesSnap); updateUI(); }
+    notesSnap = null;
+  });
+  notesText.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Escape') notesText.blur(); });
+  function toggleNotes(force) {
+    notesOpen = force != null ? force : !notesOpen;
+    updateUI();
+    if (notesOpen) setTimeout(() => notesText.focus(), 0);
+  }
+
+  // ================= Popover =================
+  const pop = $('#pop');
+  let popAnchor = null;
+  function openPop(anchor, html, onClick) {
+    if (popAnchor === anchor && pop.style.display === 'block') { closePop(); return; }
+    popAnchor = anchor;
+    pop.innerHTML = html;
+    pop.style.display = 'block';
+    pop.onclick = ev => { const b = ev.target.closest('[data-act]'); if (b) onClick(b.dataset.act, b); };
+    const r = anchor.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - pr.width - 12, Math.max(12, r.left + r.width / 2 - pr.width / 2));
+    const top = r.top > window.innerHeight / 2 ? r.top - pr.height - 8 : r.bottom + 8;
+    pop.style.left = left + 'px';
+    pop.style.top = Math.max(8, top) + 'px';
+  }
+  function closePop() { pop.style.display = 'none'; popAnchor = null; }
+  document.addEventListener('pointerdown', ev => {
+    if (pop.style.display === 'block' && !pop.contains(ev.target) && !(popAnchor && popAnchor.contains(ev.target))) closePop();
+  }, true);
+
+  function iconPop() {
+    const n = node(sel.id); if (!n) return;
+    const html = `<h4>Scegli un'icona</h4><div class="emoji-grid">` +
+      EMOJI.map(e => `<button data-act="${e}" class="${n.icon === e ? 'on' : ''}">${e}</button>`).join('') +
+      `</div><div class="menu" style="margin-top:6px"><button data-act="">Nessuna icona</button></div>`;
+    openPop($('#btnIcon'), html, act => { setIcon(act); closePop(); });
+  }
+  function imagePop() {
+    const n = node(sel.id); if (!n) return;
+    if (!n.image) { $('#imageInput').click(); return; }
+    const s = n.image.size || 'm';
+    const html = `<div class="menu"><h4>Dimensione immagine</h4>` +
+      `<div class="row"><button data-act="s" class="${s === 's' ? 'on' : ''}">Piccola</button><button data-act="m" class="${s === 'm' ? 'on' : ''}">Media</button><button data-act="l" class="${s === 'l' ? 'on' : ''}">Grande</button></div>` +
+      `<button data-act="replace">Sostituisci immagine…</button><button data-act="remove" class="danger">Rimuovi immagine</button></div>`;
+    openPop($('#btnImage'), html, act => {
+      if (act === 'replace') { closePop(); $('#imageInput').click(); }
+      else if (act === 'remove') { closePop(); removeImage(); }
+      else { setImageSize(act); closePop(); imagePop(); }
+    });
+  }
+  let pdfChoice = { mode: 'a4', pages: 'auto', notes: true };
+  function pdfPop() {
+    const hasNotes = state.nodes.some(n => n.note && n.note.trim());
+    const opt = (v, title, desc, extra) => `<label class="opt"><input type="radio" name="pdfmode" value="${v}" ${pdfChoice.mode === v ? 'checked' : ''}><div><b>${title}</b><span>${desc}</span>${extra || ''}</div></label>`;
+    const html = `<div class="menu" style="min-width:290px"><h4>Esporta PDF</h4>` +
+      opt('a4', 'A4 · una pagina', 'Tutta la mappa su un foglio') +
+      opt('tiles', 'A4 · suddivisa', 'Mappa grande su più fogli da affiancare',
+        `<br><select id="pdfPages">${[['auto', 'Numero di pagine automatico'], ['2', '2 pagine'], ['4', '4 pagine'], ['6', '6 pagine'], ['9', '9 pagine'], ['12', '12 pagine']]
+          .map(([v, t]) => `<option value="${v}" ${String(pdfChoice.pages) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`) +
+      opt('a3', 'A3 · una pagina', 'Foglio grande, più leggibile') +
+      `<div class="pdf-foot"><label><input type="checkbox" id="pdfNotes" ${pdfChoice.notes && hasNotes ? 'checked' : ''} ${hasNotes ? '' : 'disabled'}> Includi le note</label>` +
+      `<button class="primary" data-act="go">Esporta</button></div></div>`;
+    openPop($('#btnPdf'), html, act => {
+      if (act !== 'go') return;
+      pdfChoice = {
+        mode: (pop.querySelector('input[name=pdfmode]:checked') || {}).value || 'a4',
+        pages: $('#pdfPages').value === 'auto' ? 'auto' : +$('#pdfPages').value,
+        notes: $('#pdfNotes').checked
+      };
+      closePop(); exportPDF(pdfChoice);
+    });
+    $('#pdfPages').addEventListener('change', () => { pop.querySelector('input[value=tiles]').checked = true; });
+  }
+
+  // ================= Modifica testo =================
+  function startEdit(id, initial, isNew) {
+    const n = node(id); if (!n) return;
+    if (sel.id !== id) select('node', id);
+    editing = { id, orig: n.text, snap: snapshot(), isNew };
+    if (initial != null) { n.text = initial; draw(); }
+    editor.value = n.text;
+    editor.style.display = 'block';
+    positionEditor();
+    editor.focus();
+    if (initial == null) editor.select(); else editor.setSelectionRange(editor.value.length, editor.value.length);
+  }
+  function positionEditor() {
+    const n = node(editing.id); if (!n) return;
+    const d = measure(n), k = view.k;
+    const w = d.w * k + 24, h = (d.textH + d.padY * 2) * k;
+    const cy = n.y + d.textCY;
+    editor.style.left = (view.x + n.x * k - w / 2) + 'px';
+    editor.style.top = (view.y + cy * k - h / 2) + 'px';
+    editor.style.width = w + 'px';
+    editor.style.height = h + 'px';
+    editor.style.fontSize = (d.fs * k) + 'px';
+    editor.style.lineHeight = (d.lh * k) + 'px';
+    editor.style.fontWeight = n.root ? 700 : 600;
+    editor.style.padding = `${d.padY * k}px 0`;
+    editor.style.background = n.color;
+    editor.style.color = textColor(n.color);
+    editor.style.borderRadius = (d.lines.length > 1 || d.img ? 16 * k : h / 2) + 'px';
+  }
+  function finishEdit(ok) {
+    if (!editing) return;
+    const ed = editing; editing = null;
+    editor.style.display = 'none';
+    const n = node(ed.id);
+    if (n) {
+      const val = editor.value.replace(/\s+$/, '');
+      n.text = ok && val.trim() ? val : ed.orig;
+      if (n.text !== ed.orig && !ed.isNew) pushUndo(ed.snap);
+    }
+    changed();
+    svg.focus({ preventScroll: true });
+  }
+  editor.addEventListener('input', () => {
+    if (!editing) return;
+    const n = node(editing.id); if (!n) return;
+    n.text = editor.value || ' ';
+    draw();
+  });
+  editor.addEventListener('keydown', ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault(); const id = editing.id; finishEdit(true);
+      if (ev.ctrlKey || ev.metaKey) addChild(id);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault(); finishEdit(false);
+    } else if (ev.key === 'Tab') {
+      ev.preventDefault(); const id = editing.id; finishEdit(true); addChild(id);
+    }
+  });
+  editor.addEventListener('blur', () => finishEdit(true));
+
+  // ================= Puntatore (mouse, touch, penna) =================
+  const pointers = new Map();
+  let lastDown = { key: null, t: 0, x: 0, y: 0 };
+  let pinch = null;
+
+  svg.addEventListener('pointerdown', ev => {
+    if (editing) finishEdit(true);
+    if (document.activeElement === notesText) notesText.blur();
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    svg.setPointerCapture(ev.pointerId);
+
+    if (pointers.size === 2) {
+      // Pinch-zoom con due dita
+      const [a, b] = [...pointers.values()];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k };
+      if (drag && drag.mode === 'move' && drag.moved) { pushUndo(drag.snap); saveLocal(); }
+      drag = null; tempLink.style.display = 'none';
+      return;
+    }
+    if (ev.pointerType === 'mouse' && ev.button === 1) {
+      drag = { mode: 'pan', sx: ev.clientX, sy: ev.clientY, vx: view.x, vy: view.y }; svg.classList.add('panning'); return;
+    }
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+
+    const t = ev.target;
+    const h = t.closest('[data-handle]'), nEl = t.closest('[data-node]'), eEl = t.closest('[data-edge]');
+    const key = h ? 'h:' + h.dataset.handle : nEl ? 'n:' + nEl.dataset.node : eEl ? 'e:' + eEl.dataset.edge : 'bg';
+    const now = performance.now();
+    const dbl = key === lastDown.key && now - lastDown.t < 400 && Math.hypot(ev.clientX - lastDown.x, ev.clientY - lastDown.y) < 10;
+    lastDown = { key, t: dbl ? 0 : now, x: ev.clientX, y: ev.clientY };
+    const p = toWorld(ev.clientX, ev.clientY);
+
+    if (h) {
+      drag = { mode: 'link', from: h.dataset.handle, sx: ev.clientX, sy: ev.clientY, moved: false };
+      return;
+    }
+    if (nEl) {
+      const id = nEl.dataset.node;
+      if (dbl) { drag = null; startEdit(id); return; }
+      select('node', id);
+      const ids = ev.shiftKey ? [id] : subtree(id);
+      drag = { mode: 'move', ids, start: p, orig: ids.map(i => [node(i).x, node(i).y]), sx: ev.clientX, sy: ev.clientY, moved: false, snap: snapshot() };
+      return;
+    }
+    if (eEl) { select('edge', eEl.dataset.edge); drag = null; return; }
+    if (dbl) { drag = null; createAt(p.x, p.y, null); return; }
+    if (sel.type) select(null, null);
+    drag = { mode: 'pan', sx: ev.clientX, sy: ev.clientY, vx: view.x, vy: view.y };
+    svg.classList.add('panning');
+  });
+
+  svg.addEventListener('pointermove', ev => {
+    if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pinch && pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y), r = svg.getBoundingClientRect();
+      zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, (pinch.k * d / pinch.d) / view.k);
+      return;
+    }
+    if (!drag) return;
+    const dist = Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy);
+    if (drag.mode === 'pan') {
+      view.x = drag.vx + ev.clientX - drag.sx; view.y = drag.vy + ev.clientY - drag.sy; applyView();
+    } else if (drag.mode === 'move') {
+      if (!drag.moved && dist < 4) return;
+      drag.moved = true;
+      const p = toWorld(ev.clientX, ev.clientY), dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+      drag.ids.forEach((id, i) => { const n = node(id); n.x = drag.orig[i][0] + dx; n.y = drag.orig[i][1] + dy; });
+      draw();
+    } else if (drag.mode === 'link') {
+      if (!drag.moved && dist < 6) return;
+      drag.moved = true;
+      const a = node(drag.from), p = toWorld(ev.clientX, ev.clientY);
+      const over = document.elementFromPoint(ev.clientX, ev.clientY);
+      const target = over && over.closest('[data-node]');
+      const tn = target && target.dataset.node !== drag.from ? node(target.dataset.node) : null;
+      const end = tn ? { x: tn.x, y: tn.y } : p;
+      tempLink.setAttribute('d', centerLine(a, end));
+      tempLink.setAttribute('stroke', a.color);
+      tempLink.style.display = '';
+      drag.hover = tn ? tn.id : null;
+    }
+  });
+
+  function endPointer(ev) {
+    pointers.delete(ev.pointerId);
+    if (pinch) { if (pointers.size < 2) pinch = null; return; }
+    svg.classList.remove('panning');
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (d.mode === 'move' && d.moved) { pushUndo(d.snap); saveLocal(); updateUI(); }
+    if (d.mode === 'link') {
+      tempLink.style.display = 'none';
+      if (!d.moved) { addChild(d.from); return; }
+      if (ev.type === 'pointercancel') return;
+      if (d.hover) {
+        commit();
+        if (linkNodes(d.from, d.hover)) { select('edge', state.edges[state.edges.length - 1].id, true); changed(); toast('Nodi collegati'); }
+        else { undoStack.pop(); toast('Questi nodi sono già collegati'); }
+      } else {
+        const p = toWorld(ev.clientX, ev.clientY);
+        createAt(p.x, p.y, d.from);
+      }
+    }
+  }
+  svg.addEventListener('pointerup', endPointer);
+  svg.addEventListener('pointercancel', endPointer);
+
+  svg.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const r = svg.getBoundingClientRect();
+    const dy = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+    zoomAt(ev.clientX - r.left, ev.clientY - r.top, Math.exp(-dy * (ev.ctrlKey ? 0.01 : 0.0015)));
+  }, { passive: false });
+
+  // ================= Tastiera =================
+  function navigate(key) {
+    const n = sel.type === 'node' ? node(sel.id) : null;
+    if (!n) { const r = rootNode(); if (r) select('node', r.id); return; }
+    const dirs = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const [vx, vy] = dirs[key];
+    let best = null, bestScore = Infinity;
+    for (const m of state.nodes) {
+      if (m.id === n.id) continue;
+      const dx = m.x - n.x, dy = m.y - n.y;
+      const along = dx * vx + dy * vy; if (along <= 5) continue;
+      const across = Math.abs(dx * vy - dy * vx);
+      const score = along + across * 2.5;
+      if (score < bestScore) { bestScore = score; best = m; }
+    }
+    if (best) { select('node', best.id); ensureVisible(best); }
+  }
+
+  document.addEventListener('keydown', ev => {
+    if (editing || /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+    if ($('#help').classList.contains('open')) { if (ev.key === 'Escape') $('#help').classList.remove('open'); return; }
+    if (pop.style.display === 'block' && ev.key === 'Escape') { closePop(); return; }
+    const mod = ev.ctrlKey || ev.metaKey;
+    const k = ev.key;
+    if (mod && k.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+    if (mod && k.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
+    if (mod && k.toLowerCase() === 's') { ev.preventDefault(); saveFile(); return; }
+    if (mod && k.toLowerCase() === 'o') { ev.preventDefault(); $('#fileInput').click(); return; }
+    if (mod && k.toLowerCase() === 'p') { ev.preventDefault(); printMap(); return; }
+    if (mod && (k === '0')) { ev.preventDefault(); fit(); return; }
+    if (mod && (k === '+' || k === '=')) { ev.preventDefault(); zoomCenter(1.2); return; }
+    if (mod && k === '-') { ev.preventDefault(); zoomCenter(1 / 1.2); return; }
+    if (mod) return;
+
+    if (k.startsWith('Arrow')) { ev.preventDefault(); navigate(k); return; }
+    if (k === 'Escape') { if (notesOpen) toggleNotes(false); else select(null, null); return; }
+
+    const n = sel.type === 'node' ? node(sel.id) : null;
+    if (k === 'Delete' || k === 'Backspace') { ev.preventDefault(); deleteSelected(); return; }
+    if (!n) return;
+    if (k === 'Tab') { ev.preventDefault(); addChild(n.id); return; }
+    if (k === 'Enter') { ev.preventDefault(); addSibling(n.id); return; }
+    if (k === 'F2' || k === ' ') { ev.preventDefault(); startEdit(n.id); return; }
+    if (/^[1-9]$/.test(k)) { setColor(PALETTE[+k - 1]); return; }
+    if (k.length === 1) { ev.preventDefault(); startEdit(n.id, k); }
+  });
+
+  function zoomCenter(factor) { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, factor); }
+
+  // ================= File: salva / apri / nuova =================
+  function fileName() {
+    const t = (rootNode() || {}).text || 'mappa';
+    return t.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase().slice(0, 50) || 'mappa';
+  }
+  function download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+  function saveFile() {
+    const data = Object.assign({}, state, { images: usedImages() });
+    download(new Blob([JSON.stringify(data)], { type: 'application/json' }), fileName() + '.mappa.json');
+    toast('Mappa salvata su file');
+  }
+  function openMapFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const s = JSON.parse(reader.result);
+        if (!isValid(s)) throw new Error('formato');
+        commit();
+        const imgs = s.images && typeof s.images === 'object' ? s.images : {};
+        delete s.images;
+        for (const [id, m] of Object.entries(imgs)) {
+          if (m && typeof m.src === 'string' && /^data:image\//.test(m.src) && m.w > 0 && m.h > 0) images[id] = { src: m.src, w: +m.w, h: +m.h };
+        }
+        s.edges = s.edges.filter(e => e && e.from && e.to).map(e => ({ id: e.id || uid(), from: e.from, to: e.to }));
+        s.nodes.forEach(n => {
+          if (!/^#[0-9a-f]{6}$/i.test(n.color || '')) n.color = PALETTE[0];
+          if (n.image && !images[n.image.id]) delete n.image;
+          if (n.note != null && typeof n.note !== 'string') delete n.note;
+          if (n.icon != null && typeof n.icon !== 'string') delete n.icon;
+        });
+        if (!s.nodes.some(n => n.root) && s.nodes[0]) s.nodes[0].root = true;
+        state = s; sel = { type: null, id: null };
+        changed(); fit(); toast('Mappa aperta: ' + file.name);
+      } catch (e) { toast('Questo file non sembra una mappa valida'); }
+    };
+    reader.readAsText(file);
+  }
+  $('#fileInput').addEventListener('change', ev => {
+    const file = ev.target.files[0]; ev.target.value = '';
+    if (file) openMapFile(file);
+  });
+  function newMapAction() {
+    if (state.nodes.length > 1 && !confirm('Creare una nuova mappa?\nQuella attuale verrà sostituita (puoi annullare con Ctrl+Z).')) return;
+    commit();
+    state = newMap(); sel = { type: 'node', id: state.nodes[0].id };
+    changed(); const r = svg.getBoundingClientRect(); view = { x: r.width / 2, y: r.height / 2, k: 1 }; applyView();
+    startEdit(state.nodes[0].id);
+  }
+
+  // ================= Esportazione =================
+  function contentBounds(margin) {
+    const b = bounds(), m = margin == null ? 48 : margin;
+    return { x: b.x - m, y: b.y - m, w: b.w + m * 2, h: b.h + m * 2 };
+  }
+  function exportSVG(region, pxW, pxH) {
+    const bg = EXPORT_BG[state.theme === 'dark' ? 'dark' : 'light'];
+    const used = Object.keys(usedImages());
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="${f(region.x)} ${f(region.y)} ${f(region.w)} ${f(region.h)}" preserveAspectRatio="none">` +
+      `<defs><filter id="sh" x="-20%" y="-30%" width="140%" height="170%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1e233c" flood-opacity=".18"/></filter>` +
+      used.map(imageSymbol).join('') + `</defs>` +
+      `<rect x="${f(region.x - 1)}" y="${f(region.y - 1)}" width="${f(region.w + 2)}" height="${f(region.h + 2)}" fill="${bg}"/>` + markup(true) + `</svg>`;
+  }
+  // Disegna una porzione della mappa su un canvas, k = pixel per unità della mappa
+  async function renderRegion(region, k) {
+    k = Math.min(k, 16000 / region.w, 16000 / region.h, Math.sqrt(60e6 / (region.w * region.h)));
+    const pxW = Math.max(1, Math.round(region.w * k)), pxH = Math.max(1, Math.round(region.h * k));
+    const img = new Image();
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exportSVG(region, pxW, pxH));
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+    const c = document.createElement('canvas');
+    c.width = pxW; c.height = pxH;
+    c.getContext('2d').drawImage(img, 0, 0, pxW, pxH);
+    return c;
+  }
+  async function renderCanvas() {
+    const b = contentBounds();
+    return renderRegion(b, Math.max(1, Math.min(3, Math.sqrt(36e6 / (b.w * b.h)))));
+  }
+  async function exportPNG() {
+    try {
+      const c = await renderCanvas();
+      c.toBlob(b => { download(b, fileName() + '.png'); toast('Immagine PNG esportata'); }, 'image/png');
+    } catch (e) { toast('Esportazione non riuscita'); console.error(e); }
+  }
+
+  // ---- PDF generato direttamente nel browser, senza librerie esterne ----
+  const PAGE = { A4: [595.28, 841.89], A3: [841.89, 1190.55] }; // punti tipografici, verticale
+  const MM = 72 / 25.4;
+  const n2 = v => (Math.round(v * 100) / 100).toString();
+  const pdfStr = s => s.replace(/[^\x20-\x7e]/g, '').replace(/([\\()])/g, '\\$1');
+  function jpegBytes(canvas) {
+    const bin = atob(canvas.toDataURL('image/jpeg', 0.92).split(',')[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  // pages: [{ canvas, pw, ph, x, y, w, h, label }] — x,y dall'angolo in alto a sinistra, in punti
+  function buildPdf(pages) {
+    const enc = new TextEncoder(), parts = [], off = [];
+    let len = 0;
+    const put = x => { const b = typeof x === 'string' ? enc.encode(x) : x; parts.push(b); len += b.length; };
+    const obj = (i, body) => { off[i] = len; put(`${i} 0 obj\n${body}\nendobj\n`); };
+    put('%PDF-1.4\n');
+    obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+    obj(2, `<< /Type /Pages /Kids [${pages.map((_, i) => `${4 + 3 * i} 0 R`).join(' ')}] /Count ${pages.length} >>`);
+    obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    pages.forEach((p, i) => {
+      const pi = 4 + 3 * i, ii = pi + 1, ci = pi + 2;
+      const jpg = jpegBytes(p.canvas);
+      let cs = `q ${n2(p.w)} 0 0 ${n2(p.h)} ${n2(p.x)} ${n2(p.ph - p.y - p.h)} cm /Im0 Do Q`;
+      if (p.label) cs += `\nBT /F1 8 Tf 0.45 0.47 0.53 rg ${n2(p.x)} 12 Td (${pdfStr(p.label)}) Tj ET`;
+      obj(pi, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${n2(p.pw)} ${n2(p.ph)}] /Resources << /XObject << /Im0 ${ii} 0 R >> /Font << /F1 3 0 R >> >> /Contents ${ci} 0 R >>`);
+      off[ii] = len;
+      put(`${ii} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${p.canvas.width} /Height ${p.canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`);
+      put(jpg); put('\nendstream\nendobj\n');
+      obj(ci, `<< /Length ${cs.length} >>\nstream\n${cs}\nendstream`);
+    });
+    const count = 4 + 3 * pages.length, xref = len;
+    let x = `xref\n0 ${count}\n0000000000 65535 f \n`;
+    for (let i = 1; i < count; i++) x += String(off[i]).padStart(10, '0') + ' 00000 n \n';
+    put(x + `trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+    return new Blob(parts, { type: 'application/pdf' });
+  }
+
+  // Sceglie righe, colonne e orientamento per la mappa suddivisa
+  function planTiles(b, Pw, Ph, m, n) {
+    let best = null;
+    for (const land of [false, true]) {
+      const pw = land ? Ph : Pw, ph = land ? Pw : Ph, aw = pw - 2 * m, ah = ph - 2 * m;
+      const grids = [];
+      if (n === 'auto') {
+        const s0 = 0.62; // punti per unità: testo dei nodi intorno ai 10 pt
+        grids.push([Math.max(1, Math.ceil(b.w * s0 / aw)), Math.max(1, Math.ceil(b.h * s0 / ah))]);
+      } else {
+        for (let c = 1; c <= n; c++) if (n % c === 0) grids.push([c, n / c]);
+      }
+      for (const [cols, rows] of grids) {
+        const s = Math.min(cols * aw / b.w, rows * ah / b.h);
+        const score = n === 'auto' ? -cols * rows * 1000 + s : s;
+        if (!best || score > best.score) best = { score, pw, ph, aw, ah, cols, rows, s };
+      }
+    }
+    best.tw = best.aw / best.s; best.th = best.ah / best.s;
+    best.ox = b.x + b.w / 2 - best.tw * best.cols / 2;
+    best.oy = b.y + b.h / 2 - best.th * best.rows / 2;
+    return best;
+  }
+
+  function wrapLines(ctx, text, maxW) {
+    const out = [];
+    for (const para of text.split('\n')) {
+      if (!para.trim()) { out.push(''); continue; }
+      let line = '';
+      for (let word of para.split(/\s+/)) {
+        while (ctx.measureText(word).width > maxW && word.length > 1) {
+          let cut = word.length - 1;
+          while (cut > 1 && ctx.measureText(word.slice(0, cut)).width > maxW) cut--;
+          if (line) { out.push(line); line = ''; }
+          out.push(word.slice(0, cut)); word = word.slice(cut);
+        }
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width > maxW && line) { out.push(line); line = word; } else line = test;
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+  // Pagine finali con le note, ramo per ramo
+  function renderNotesPages(pw, ph) {
+    const items = orderedNodes().filter(n => n.note && n.note.trim());
+    if (!items.length) return [];
+    const sc = 150 / 72, W = Math.round(pw * sc), H = Math.round(ph * sc), M = Math.round(48 * sc);
+    const pages = [];
+    let ctx, y;
+    const newPage = () => {
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); ctx.textBaseline = 'top';
+      pages.push(c); y = M;
+    };
+    const body = () => { ctx.font = `400 ${11 * sc}px ${FONT}`; ctx.fillStyle = '#3b4152'; };
+    newPage();
+    ctx.font = `700 ${20 * sc}px ${FONT}`; ctx.fillStyle = '#1f2433';
+    ctx.fillText('Note · ' + ((rootNode() || {}).text || '').replace(/\n/g, ' '), M, y);
+    y += 34 * sc;
+    ctx.fillStyle = '#6d5efc'; ctx.fillRect(M, y, 60 * sc, 3 * sc); y += 22 * sc;
+    const indent = 18 * sc, lh = 16 * sc;
+    for (const n of items) {
+      if (y + 60 * sc > H - M) newPage();
+      ctx.fillStyle = n.color; ctx.beginPath(); ctx.arc(M + 5 * sc, y + 7 * sc, 5 * sc, 0, Math.PI * 2); ctx.fill();
+      ctx.font = `700 ${13 * sc}px ${FONT}`; ctx.fillStyle = '#1f2433';
+      const title = ((n.icon ? n.icon + ' ' : '') + n.text.replace(/\n/g, ' '));
+      wrapLines(ctx, title, W - 2 * M - indent).forEach(l => { ctx.fillText(l, M + indent, y); y += 18 * sc; });
+      y += 4 * sc;
+      body();
+      for (const line of wrapLines(ctx, n.note.trim(), W - 2 * M - indent)) {
+        if (y + lh > H - M) { newPage(); body(); }
+        ctx.fillText(line, M + indent, y); y += lh;
+      }
+      y += 16 * sc;
+    }
+    return pages;
+  }
+
+  async function exportPDF(opt) {
+    toast('Preparo il PDF…', 8000);
+    await new Promise(r => setTimeout(r, 30));
+    try {
+      const size = opt.mode === 'a3' ? 'A3' : 'A4';
+      const [Pw, Ph] = PAGE[size];
+      const m = 10 * MM;
+      const b = contentBounds(24);
+      const pages = [];
+      let note = '';
+      if (opt.mode === 'tiles') {
+        const plan = planTiles(b, Pw, Ph, m, opt.pages);
+        const total = plan.cols * plan.rows;
+        const k = plan.s / 72 * 200; // 200 dpi
+        let i = 0;
+        for (let r = 0; r < plan.rows; r++) {
+          for (let c = 0; c < plan.cols; c++) {
+            i++;
+            const region = { x: plan.ox + c * plan.tw, y: plan.oy + r * plan.th, w: plan.tw, h: plan.th };
+            const canvas = await renderRegion(region, k);
+            pages.push({ canvas, pw: plan.pw, ph: plan.ph, x: m, y: m, w: plan.aw, h: plan.ah,
+              label: `Pagina ${i} di ${total}  -  riga ${r + 1}, colonna ${c + 1}` });
+          }
+        }
+        note = `${total} ${total === 1 ? 'pagina' : 'pagine'} (${plan.cols}×${plan.rows})`;
+      } else {
+        const land = b.w > b.h;
+        const pw = land ? Ph : Pw, ph = land ? Pw : Ph, aw = pw - 2 * m, ah = ph - 2 * m;
+        const s = Math.min(aw / b.w, ah / b.h);
+        const canvas = await renderRegion(b, Math.min(4, s / 72 * 220));
+        const dw = b.w * s, dh = b.h * s;
+        pages.push({ canvas, pw, ph, x: (pw - dw) / 2, y: (ph - dh) / 2, w: dw, h: dh });
+        note = size;
+      }
+      if (opt.notes) renderNotesPages(Pw, Ph).forEach(canvas => pages.push({ canvas, pw: Pw, ph: Ph, x: 0, y: 0, w: Pw, h: Ph }));
+      download(buildPdf(pages), fileName() + (opt.mode === 'tiles' ? '-a4-pagine' : '-' + size.toLowerCase()) + '.pdf');
+      toast('PDF esportato · ' + note);
+    } catch (e) { toast('Esportazione non riuscita'); console.error(e); }
+  }
+
+  async function printMap() {
+    try {
+      const c = await renderCanvas();
+      const img = $('#printArea img');
+      img.src = c.toDataURL('image/png');
+      $('#pageStyle').textContent = `@page { size: A4 ${c.width > c.height ? 'landscape' : 'portrait'}; margin: 10mm; }`;
+      await new Promise(r => (img.complete ? r() : (img.onload = r)));
+      window.print();
+    } catch (e) { toast('Stampa non riuscita'); console.error(e); }
+  }
+
+  // ================= Pulsanti =================
+  $('#btnNew').onclick = newMapAction;
+  $('#btnOpen').onclick = () => $('#fileInput').click();
+  $('#btnSave').onclick = saveFile;
+  $('#btnUndo').onclick = undo;
+  $('#btnRedo').onclick = redo;
+  $('#btnLayout').onclick = autoLayout;
+  $('#btnPng').onclick = exportPNG;
+  $('#btnPdf').onclick = pdfPop;
+  $('#btnPrint').onclick = printMap;
+  $('#btnTheme').onclick = () => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; changed(); };
+  $('#btnHelp').onclick = () => $('#help').classList.add('open');
+  $('#btnHelpClose').onclick = () => $('#help').classList.remove('open');
+  $('#help').addEventListener('click', ev => { if (ev.target.id === 'help') $('#help').classList.remove('open'); });
+  $('#btnZoomIn').onclick = () => zoomCenter(1.2);
+  $('#btnZoomOut').onclick = () => zoomCenter(1 / 1.2);
+  $('#btnFit').onclick = fit;
+  $('#btnChild').onclick = () => sel.type === 'node' && addChild(sel.id);
+  $('#btnSibling').onclick = () => sel.type === 'node' && addSibling(sel.id);
+  $('#btnEdit').onclick = () => sel.type === 'node' && startEdit(sel.id);
+  $('#btnIcon').onclick = () => sel.type === 'node' && iconPop();
+  $('#btnImage').onclick = () => sel.type === 'node' && imagePop();
+  $('#btnNotes').onclick = () => sel.type === 'node' && toggleNotes();
+  $('#btnNotesClose').onclick = () => toggleNotes(false);
+  $('#btnDelete').onclick = deleteSelected;
+  $('#btnDeleteEdge').onclick = deleteSelected;
+  // I pulsanti non devono rubare il focus alla tastiera
+  document.querySelectorAll('header button, .float button').forEach(b => b.addEventListener('mousedown', e => e.preventDefault()));
+
+  window.addEventListener('resize', () => { applyView(); closePop(); });
+
+  // ================= Avvio =================
+  draw();
+  if (state.nodes.length > 1) fit();
+  else { const r = svg.getBoundingClientRect(); view = { x: r.width / 2, y: r.height / 2, k: 1 }; applyView(); }
+  updateUI();
+  svg.focus({ preventScroll: true });
+
+  // Accesso per test automatici
+  window.__mappa = { get state() { return state; }, get images() { return images; }, buildPdf, renderCanvas, addChild, select, planTiles };
+})();
+</script>
+</body>
+</html>
