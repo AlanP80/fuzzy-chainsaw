@@ -11,7 +11,7 @@ L'app viene costruita in automatico da GitHub Actions (flusso **App per Mac**) a
    - `MappeMentali-Intel.dmg` → Mac con processore Intel
 3. Apri il `.dmg` e trascina **Mappe Mentali** nella cartella **Applicazioni**.
 
-Se crei un tag `v1.0.0` (o simile), i `.dmg` vengono pubblicati anche in una **Release**, scaricabile senza accedere ad Actions.
+Quando le modifiche arrivano su `main`, i `.dmg` vengono pubblicati anche in una **Release** (versione presa da `desktop/package.json`), scaricabile senza login dalla pagina **Releases**.
 
 ## Primo avvio (app non firmata da Apple)
 L'app non ha un certificato sviluppatore Apple (costa 99 $/anno), quindi la prima volta macOS la blocca:

@@ -65,11 +65,25 @@ jobs:
           path: desktop/dist/*.dmg
           if-no-files-found: error
 
+      # La release si crea da sola quando le modifiche arrivano su main (o con un tag v*).
+      # Il numero di versione viene da desktop/package.json.
+      - name: Scegli il nome della release
+        id: rel
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(node -p "require('./desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Pubblica la release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.rel.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          name: Mappe Mentali ${{ github.ref_name }}
+          tag_name: ${{ steps.rel.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Mappe Mentali ${{ steps.rel.outputs.tag }}
           files: desktop/dist/*.dmg
           body: |
             ## Scarica
