@@ -36,7 +36,9 @@ const THUMB_SIZE = 512;
 let cacheDir, thumbsDir, previewsDir, settingsFile;
 
 function initPaths() {
-  cacheDir = path.join(app.getPath('userData'), 'cache');
+  // Non dentro userData: lì Chromium ha la sua cartella «Cache» e su macOS
+  // (che non distingue maiuscole e minuscole) «cache» sarebbe la stessa cartella.
+  cacheDir = path.join(app.getPath('cache'), 'AP PhotoViewer', 'Anteprime');
   thumbsDir = path.join(cacheDir, 'thumbs');
   previewsDir = path.join(cacheDir, 'previews');
   settingsFile = path.join(app.getPath('userData'), 'settings.json');
@@ -92,14 +94,18 @@ function run(cmd, args) {
   });
 }
 
+const tmpName = out => `${out}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+
 async function writeAtomic(out, buf) {
-  const tmp = `${out}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = tmpName(out);
+  await fsp.mkdir(path.dirname(out), { recursive: true });
   await fsp.writeFile(tmp, buf);
   await fsp.rename(tmp, out);
 }
 
 async function sipsToJpeg(src, out, maxSize) {
-  const tmp = `${out}.${process.pid}.${Date.now()}.tmp.jpg`;
+  const tmp = tmpName(out) + '.jpg';
+  await fsp.mkdir(path.dirname(out), { recursive: true });
   const args = ['-s', 'format', 'jpeg', '-s', 'formatOptions', maxSize ? '82' : '92'];
   if (maxSize) args.push('-Z', String(maxSize));
   args.push(src, '--out', tmp);

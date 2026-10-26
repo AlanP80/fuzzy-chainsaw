@@ -35,6 +35,8 @@ const say = (...a) => console.log('[test]', ...a);
   say('miniature:', JSON.stringify(tiles, null, 1));
   await win.screenshot({ path: path.join(outDir, '1-griglia.png') });
 
+  const problems = [];
+  if (!tiles.length || tiles.some(t => !t.ok)) problems.push('miniature mancanti: ' + tiles.filter(t => !t.ok).map(t => t.name).join(', '));
   // Prove dirette delle funzioni interne
   const files = fs.readdirSync(photos).filter(f => !f.startsWith('.')).map(f => path.join(photos, f)).filter(f => fs.statSync(f).isFile());
   for (const f of files) {
@@ -61,6 +63,8 @@ const say = (...a) => console.log('[test]', ...a);
       return out;
     }, f);
     say('file:', JSON.stringify(r));
+    if (!r.thumb || (r.thumbImg || '').startsWith('ERRORE')) problems.push('miniatura: ' + path.basename(f));
+    if ((r.img || '').startsWith('ERRORE')) problems.push('anteprima: ' + path.basename(f));
   }
 
   // Clic sulla prima miniatura → viewer
@@ -81,5 +85,6 @@ const say = (...a) => console.log('[test]', ...a);
     await win.screenshot({ path: path.join(outDir, '3-ultima.png') });
   }
   await app.close();
-  say('FINE');
+  if (problems.length) { say('PROBLEMI:', problems.join(' | ')); process.exit(1); }
+  say('FINE: tutto ok');
 })().catch(e => { console.error('[test] ERRORE', e); process.exit(1); });

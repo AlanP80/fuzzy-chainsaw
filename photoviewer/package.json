@@ -1,7 +1,7 @@
 {
   "name": "ap-photoviewer",
   "productName": "AP PhotoViewer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Visualizzatore di immagini semplice e veloce: miniature, RAW, zoom, EXIF e presentazione.",
   "author": "AlanP80",
   "private": true,
