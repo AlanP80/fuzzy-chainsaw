@@ -41,10 +41,14 @@ const say = (...a) => console.log('[test]', ...a);
     const r = await win.evaluate(async p => {
       const out = { p };
       try { out.thumb = await window.api.thumb(p); } catch (e) { out.thumbErr = String(e); }
-      try {
-        const res = await fetch(window.api.fileUrl(out.thumb || p));
-        out.fetch = res.status + ' ' + res.headers.get('content-type') + ' ' + (await res.arrayBuffer()).byteLength;
-      } catch (e) { out.fetchErr = String(e); }
+      if (out.thumb) {
+        out.thumbImg = await new Promise(res => {
+          const im = new Image();
+          im.onload = () => res(`ok ${im.naturalWidth}x${im.naturalHeight}`);
+          im.onerror = () => res('ERRORE caricamento');
+          im.src = window.api.fileUrl(out.thumb);
+        });
+      }
       try { out.preview = await window.api.preview(p, true); } catch (e) { out.previewErr = String(e); }
       try {
         out.img = await new Promise(res => {
