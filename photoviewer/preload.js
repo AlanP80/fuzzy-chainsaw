@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('api', {
   setSettings: patch => ipcRenderer.invoke('settings-set', patch),
   setFullscreen: value => ipcRenderer.invoke('fullscreen', value),
   isFullscreen: () => ipcRenderer.invoke('is-fullscreen'),
+  log: msg => ipcRenderer.invoke('log', String(msg)),
   pathForFile: file => webUtils.getPathForFile(file),
   on: (channel, cb) => {
     if (EVENTS.has(channel)) ipcRenderer.on(channel, (_e, ...args) => cb(...args));
