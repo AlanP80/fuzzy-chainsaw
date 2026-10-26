@@ -52,6 +52,10 @@ const ICONS = {
   warn: '<svg viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4.5M12 17.2v.2"/></svg>'
 };
 
+// Errori dell'interfaccia → registro
+window.addEventListener('error', e => api.log(`${e.message} @ ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', e => api.log(`promessa: ${e.reason && (e.reason.stack || e.reason.message || e.reason)}`));
+
 // ---------- Elementi ----------
 const gridWrap = $('#grid-wrap');
 const grid = $('#grid');

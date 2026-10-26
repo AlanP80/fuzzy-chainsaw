@@ -44,6 +44,22 @@ function initPaths() {
   fs.mkdirSync(previewsDir, { recursive: true });
 }
 
+// ---------- Registro errori (Libreria/Logs/AP PhotoViewer/main.log) ----------
+let logFile = null;
+function log(...parts) {
+  const line = `[${new Date().toISOString()}] ${parts.map(x => (x instanceof Error ? (x.stack || x.message) : typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}\n`;
+  if (process.env.APV_LOG_STDOUT) process.stdout.write(line);
+  try {
+    if (!logFile) {
+      const dir = app.getPath('logs');
+      fs.mkdirSync(dir, { recursive: true });
+      logFile = path.join(dir, 'main.log');
+      try { if (fs.statSync(logFile).size > 2 * 1024 * 1024) fs.renameSync(logFile, logFile + '.old'); } catch { /* nuovo */ }
+    }
+    fs.appendFileSync(logFile, line);
+  } catch { /* niente registro */ }
+}
+
 const exists = p => fsp.access(p).then(() => true, () => false);
 const cacheKey = (p, st) =>
   crypto.createHash('sha1').update(`${p}|${st.size}|${st.mtimeMs}|v1`).digest('hex');
@@ -111,14 +127,14 @@ async function makeThumb(p) {
     const ext = extOf(p);
     let img = null;
     if (isMac || process.platform === 'win32') {
-      try { img = await nativeImage.createThumbnailFromPath(p, { width: THUMB_SIZE, height: THUMB_SIZE }); } catch { img = null; }
+      try { img = await nativeImage.createThumbnailFromPath(p, { width: THUMB_SIZE, height: THUMB_SIZE }); } catch (err) { log('Quick Look:', p, err); img = null; }
     }
     if (img && !img.isEmpty()) {
       await writeAtomic(out, img.toJPEG(84));
       return out;
     }
     if (isMac) {
-      try { await sipsToJpeg(p, out, THUMB_SIZE); return out; } catch { /* prova sotto */ }
+      try { await sipsToJpeg(p, out, THUMB_SIZE); return out; } catch (err) { log('sips miniatura:', p, err); }
     }
     if (ext === 'jpg' || ext === 'jpeg' || ext === 'png') {
       const full = nativeImage.createFromPath(p);
@@ -429,6 +445,10 @@ function buildMenu() {
       submenu: [
         { role: 'about', label: `Informazioni su ${APP_NAME}` },
         { type: 'separator' },
+        { label: 'Mostra il registro degli errori', click: () => {
+          log('registro aperto dal menu');
+          shell.showItemInFolder(path.join(app.getPath('logs'), 'main.log'));
+        } },
         { label: 'Svuota la cache delle anteprime', click: async () => {
           await fsp.rm(cacheDir, { recursive: true, force: true }).catch(() => {});
           initPaths();
@@ -496,13 +516,22 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function registerProtocol() {
-  protocol.handle('apv', req => {
-    const p = new URL(req.url).searchParams.get('p') || '';
-    const abs = path.resolve(p);
-    if (!abs.startsWith(cacheDir + path.sep) && !isImage(extOf(abs))) {
-      return new Response('Non consentito', { status: 403 });
+  protocol.handle('apv', async req => {
+    let abs = '';
+    try {
+      const p = new URL(req.url).searchParams.get('p') || '';
+      abs = path.resolve(p);
+      if (!abs.startsWith(cacheDir + path.sep) && !isImage(extOf(abs))) {
+        log('apv: non consentito', abs);
+        return new Response('Non consentito', { status: 403 });
+      }
+      const res = await net.fetch(pathToFileURL(abs).toString());
+      if (!res.ok) log('apv: risposta', res.status, abs);
+      return res;
+    } catch (err) {
+      log('apv: errore', abs, err);
+      return new Response(String(err && err.message), { status: 500 });
     }
-    return net.fetch(pathToFileURL(abs).toString());
   });
 }
 
@@ -521,8 +550,17 @@ function registerIpc() {
   ipcMain.handle('dir-mtime', async (_e, dir) => {
     try { return (await fsp.stat(dir)).mtimeMs; } catch { return null; }
   });
-  ipcMain.handle('thumb', async (_e, p) => { try { return await makeThumb(p); } catch { return null; } });
-  ipcMain.handle('preview', async (_e, p, urgent) => { try { return await makePreview(p, urgent); } catch { return null; } });
+  ipcMain.handle('thumb', async (_e, p) => {
+    try {
+      const r = await makeThumb(p);
+      if (!r) log('miniatura non creata', p);
+      return r;
+    } catch (err) { log('miniatura: errore', p, err); return null; }
+  });
+  ipcMain.handle('preview', async (_e, p, urgent) => {
+    try { return await makePreview(p, urgent); } catch (err) { log('anteprima: errore', p, err); return null; }
+  });
+  ipcMain.handle('log', (_e, msg) => log('interfaccia:', msg));
   ipcMain.handle('exif', (_e, p) => readExif(p));
 
   ipcMain.handle('open-with', async (_e, p, which) => {
@@ -609,6 +647,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.whenReady().then(() => {
     initPaths();
+    log(`avvio ${app.getVersion()} · Electron ${process.versions.electron} · ${process.platform} ${process.arch} · ${os.release()}`);
     loadSettings();
     registerProtocol();
     registerIpc();

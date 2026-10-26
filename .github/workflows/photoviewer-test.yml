@@ -1,0 +1,76 @@
+name: AP PhotoViewer prova su Mac
+
+on:
+  push:
+    branches: ['claude/**']
+    paths:
+      - 'photoviewer/**'
+      - '.github/workflows/photoviewer-test.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installa le dipendenze
+        working-directory: photoviewer
+        run: npm ci --no-audit --no-fund
+
+      - name: Costruisci l'app (Apple Silicon) e firmala come la release
+        working-directory: photoviewer
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npx electron-builder --mac dir --arm64
+          codesign --force --deep --sign - "dist/mac-arm64/AP PhotoViewer.app"
+
+      - name: Prepara foto di prova
+        run: |
+          set -x
+          D="$HOME/Pictures/APTest"
+          mkdir -p "$D"
+          python3 - "$D" <<'PY' || true
+          import sys, zlib, struct
+          # PNG semplice senza librerie esterne
+          def png(path, w, h, c):
+              raw = b''.join(b'\x00' + bytes(c) * w for _ in range(h))
+              def chunk(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+              open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+          png(sys.argv[1] + '/base.png', 1600, 1000, (40, 120, 200))
+          PY
+          sips -s format jpeg "$D/base.png" --out "$D/IMG_0001.JPG"
+          sips -s format jpeg "$D/base.png" --out "$D/IMG_0002.JPG"
+          sips -s format tiff "$D/base.png" --out "$D/Scansione.tif"
+          sips -s format heic "$D/base.png" --out "$D/Telefono.heic" || true
+          W=$(find "/System/Library/Desktop Pictures" -iname '*.heic' 2>/dev/null | head -1)
+          [ -n "$W" ] && sips -s format jpeg "$W" --out "$D/Sfondo.jpg" || true
+          # RAW Canon reale, se raggiungibile
+          for page in "https://raw.pixls.us/data/Canon/EOS%205D%20Mark%20III/" "https://raw.pixls.us/data/Canon/EOS%205D%20Mark%20II/"; do
+            f=$(curl -sL -m 30 "$page" | grep -oE 'href="[^"]+\.(CR2|DNG|dng)"' | head -1 | sed 's/href="//; s/"$//')
+            if [ -n "$f" ]; then curl -sL -m 120 -o "$D/IMG_0003.CR2" "$page$f" && break; fi
+          done
+          ls -la "$D"
+          file "$D"/* || true
+
+      - name: Prova l'app
+        working-directory: photoviewer
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1.48.2
+          node test/mac-smoke.js "$PWD/dist/mac-arm64/AP PhotoViewer.app/Contents/MacOS/AP PhotoViewer" "$HOME/Pictures/APTest" "$PWD/test-results"
+          echo "----- registro -----"
+          cat "$HOME/Library/Logs/AP PhotoViewer/main.log" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: APPhotoViewer-prova
+          path: photoviewer/test-results
