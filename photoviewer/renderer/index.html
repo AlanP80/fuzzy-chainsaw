@@ -38,12 +38,36 @@
           <option value="other">Altri formati</option>
         </select>
       </label>
+      <label class="opt">Stelle
+        <select id="rating-filter">
+          <option value="all">Tutte</option>
+          <option value="1">★ o più</option>
+          <option value="2">★★ o più</option>
+          <option value="3">★★★ o più</option>
+          <option value="4">★★★★ o più</option>
+          <option value="5">★★★★★</option>
+          <option value="0">Senza stelle</option>
+        </select>
+      </label>
+      <label class="opt">Etichetta
+        <select id="label-filter">
+          <option value="all">Tutte</option>
+          <option value="red">● Rossa</option>
+          <option value="yellow">● Gialla</option>
+          <option value="green">● Verde</option>
+          <option value="blue">● Blu</option>
+          <option value="purple">● Viola</option>
+          <option value="any">Con etichetta</option>
+          <option value="none">Senza etichetta</option>
+        </select>
+      </label>
       <label class="opt">Ordina per
         <select id="sort">
           <option value="name">Nome</option>
           <option value="date">Data</option>
           <option value="type">Tipo</option>
           <option value="size">Dimensione</option>
+          <option value="rating">Valutazione</option>
         </select>
       </label>
       <button class="icon-btn small" id="btn-sortdir" title="Crescente / decrescente"><svg viewBox="0 0 24 24"><path d="M7 4v16M3.5 16.5L7 20l3.5-3.5M14 6h7M14 12h5M14 18h3"/></svg></button>
@@ -73,6 +97,8 @@
     <div class="vb-left">
       <button class="icon-btn" id="v-close" title="Torna alle miniature (Esc)"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <div class="vtitle"><span id="v-name"></span><span id="v-badge" class="badge"></span><span id="v-pos" class="muted"></span></div>
+      <span class="stars big" id="v-stars" title="Valutazione (⌘0–⌘5)"><i data-r="1">★</i><i data-r="2">★</i><i data-r="3">★</i><i data-r="4">★</i><i data-r="5">★</i></span>
+      <button class="lbl-btn" id="v-label" title="Etichetta colore (⌘6–⌘9)"></button>
     </div>
     <div class="vb-right">
       <button class="icon-btn" id="v-zoomout" title="Riduci (−)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M8 11h6"/></svg></button>
@@ -114,6 +140,13 @@
           <dt>⌘ + &nbsp;⌘ −</dt><dd>Miniature più grandi / piccole</dd>
           <dt>⌘ F</dt><dd>Cerca</dd>
           <dt>⌘ D</dt><dd>Aggiungi ai Preferiti</dd>
+        </dl>
+        <h4>Stelle ed etichette</h4>
+        <dl>
+          <dt>⌘0 … ⌘5</dt><dd>Nessuna stella … 5 stelle</dd>
+          <dt>⌘ . &nbsp;⌘ ,</dt><dd>Una stella in più / in meno</dd>
+          <dt>⌘6 ⌘7 ⌘8 ⌘9</dt><dd>Etichetta rossa, gialla, verde, blu (di nuovo = togli)</dd>
+          <dt>Clic sulle stelle</dt><dd>Assegna; clic sulla stessa = togli</dd>
         </dl>
       </div>
       <div>

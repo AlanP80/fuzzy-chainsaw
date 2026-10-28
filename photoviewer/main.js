@@ -9,6 +9,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { pathToFileURL } = require('url');
+const meta = require('./meta');
 
 const APP_NAME = 'AP PhotoViewer';
 app.setName(APP_NAME);
@@ -64,7 +65,7 @@ function log(...parts) {
 
 const exists = p => fsp.access(p).then(() => true, () => false);
 const cacheKey = (p, st) =>
-  crypto.createHash('sha1').update(`${p}|${st.size}|${st.mtimeMs}|v1`).digest('hex');
+  crypto.createHash('sha1').update(`${p}|${Math.round(st.mtimeMs)}|v2`).digest('hex');
 
 // Coda con un numero massimo di lavori in parallelo.
 // lifo = true: prima le richieste più recenti (utile mentre si scorre la griglia)
@@ -475,6 +476,7 @@ function buildMenu() {
         { label: 'Aggiorna', accelerator: 'CmdOrCtrl+R', click: menuSend('refresh') },
         { type: 'separator' },
         { label: 'Aggiungi ai Preferiti', accelerator: 'CmdOrCtrl+D', click: menuSend('favorite') },
+        { label: 'Cancella l\'elenco Recenti', click: menuSend('clear-recents') },
         { type: 'separator' },
         { label: 'Chiudi finestra', role: 'close' }
       ]
@@ -491,6 +493,27 @@ function buildMenu() {
         { role: 'selectAll', label: 'Seleziona tutto' },
         { type: 'separator' },
         { label: 'Cerca', accelerator: 'CmdOrCtrl+F', click: menuSend('search') }
+      ]
+    },
+    {
+      label: 'Valutazione',
+      submenu: [
+        { label: 'Nessuna stella', accelerator: 'CmdOrCtrl+0', click: menuSend('rate:0') },
+        { label: '★', accelerator: 'CmdOrCtrl+1', click: menuSend('rate:1') },
+        { label: '★★', accelerator: 'CmdOrCtrl+2', click: menuSend('rate:2') },
+        { label: '★★★', accelerator: 'CmdOrCtrl+3', click: menuSend('rate:3') },
+        { label: '★★★★', accelerator: 'CmdOrCtrl+4', click: menuSend('rate:4') },
+        { label: '★★★★★', accelerator: 'CmdOrCtrl+5', click: menuSend('rate:5') },
+        { type: 'separator' },
+        { label: 'Aumenta valutazione', accelerator: 'CmdOrCtrl+.', click: menuSend('rate:+') },
+        { label: 'Diminuisci valutazione', accelerator: 'CmdOrCtrl+,', click: menuSend('rate:-') },
+        { type: 'separator' },
+        { label: 'Etichetta rossa', accelerator: 'CmdOrCtrl+6', click: menuSend('label:red') },
+        { label: 'Etichetta gialla', accelerator: 'CmdOrCtrl+7', click: menuSend('label:yellow') },
+        { label: 'Etichetta verde', accelerator: 'CmdOrCtrl+8', click: menuSend('label:green') },
+        { label: 'Etichetta blu', accelerator: 'CmdOrCtrl+9', click: menuSend('label:blue') },
+        { label: 'Etichetta viola', click: menuSend('label:purple') },
+        { label: 'Nessuna etichetta', click: menuSend('label:none') }
       ]
     },
     {
@@ -568,6 +591,18 @@ function registerIpc() {
   });
   ipcMain.handle('log', (_e, msg) => log('interfaccia:', msg));
   ipcMain.handle('exif', (_e, p) => readExif(p));
+  ipcMain.handle('meta-read', async (_e, paths) => {
+    try { return await meta.readMany(paths); } catch (err) { log('valutazioni: lettura', err); return {}; }
+  });
+  ipcMain.handle('meta-write', async (_e, paths, change) => {
+    try {
+      const res = await meta.write(paths, change);
+      return { ok: true, ...res };
+    } catch (err) {
+      log('valutazioni: scrittura', paths, change, err);
+      return { ok: false, error: String((err && err.message) || err).split('\n')[0] };
+    }
+  });
 
   ipcMain.handle('open-with', async (_e, p, which) => {
     if (!isMac) { await shell.openPath(p); return true; }
@@ -605,6 +640,9 @@ function registerIpc() {
       if (r.checkboxChecked) { settings.confirmTrash = false; saveSettings(); }
     }
     const trashed = [];
+    // I file .xmp affiancati ai RAW (stelle ed etichette) vanno nel Cestino insieme alla foto
+    const sidecars = await meta.sidecarsFor(paths).catch(() => []);
+    for (const sc of sidecars) { try { await shell.trashItem(sc); } catch (err) { log('cestino .xmp', sc, err); } }
     for (const p of paths) {
       try { await shell.trashItem(p); trashed.push(p); } catch (err) {
         await dialog.showMessageBox(win, { type: 'error', message: 'Non riesco a spostare il file nel Cestino', detail: `${p}\n${err.message}` });
@@ -621,9 +659,13 @@ function registerIpc() {
   ipcMain.handle('context-menu', (_e, items) => new Promise(resolve => {
     let done = false;
     const finish = v => { if (!done) { done = true; resolve(v); } };
-    const menu = Menu.buildFromTemplate(items.map(it => (it === '-' ? { type: 'separator' } : {
-      label: it.label, enabled: it.enabled !== false, click: () => finish(it.id)
-    })));
+    const build = list => list.map(it => (it === '-' ? { type: 'separator' } : it.submenu ? {
+      label: it.label, submenu: build(it.submenu)
+    } : {
+      label: it.label, enabled: it.enabled !== false, type: it.checked !== undefined ? 'checkbox' : 'normal',
+      checked: !!it.checked, click: () => finish(it.id)
+    }));
+    const menu = Menu.buildFromTemplate(build(items));
     menu.popup({ window: win, callback: () => setTimeout(() => finish(null), 50) });
   }));
 
@@ -653,6 +695,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.whenReady().then(() => {
     initPaths();
+    meta.init({ log });
     log(`avvio ${app.getVersion()} · Electron ${process.versions.electron} · ${process.platform} ${process.arch} · ${os.release()}`);
     loadSettings();
     registerProtocol();

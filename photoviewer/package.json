@@ -1,8 +1,8 @@
 {
   "name": "ap-photoviewer",
   "productName": "AP PhotoViewer",
-  "version": "1.0.1",
-  "description": "Visualizzatore di immagini semplice e veloce: miniature, RAW, zoom, EXIF e presentazione.",
+  "version": "1.1.0",
+  "description": "Visualizzatore di immagini semplice e veloce: miniature, RAW, zoom, EXIF, stelle ed etichette compatibili con Bridge.",
   "author": "AlanP80",
   "private": true,
   "main": "main.js",
@@ -11,7 +11,8 @@
     "dist:mac": "electron-builder --mac dir --arm64 --x64"
   },
   "dependencies": {
-    "exifr": "7.1.3"
+    "exifr": "7.1.3",
+    "exiftool-vendored.pl": "13.59.3"
   },
   "devDependencies": {
     "electron": "33.2.1",
@@ -21,8 +22,16 @@
     "appId": "it.alanp80.apphotoviewer",
     "productName": "AP PhotoViewer",
     "copyright": "AlanP80",
-    "files": ["main.js", "preload.js", "renderer/**"],
-    "directories": { "buildResources": "build", "output": "dist" },
+    "files": [
+      "main.js",
+      "meta.js",
+      "preload.js",
+      "renderer/**"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
     "mac": {
       "category": "public.app-category.photography",
       "icon": "build/icon.png",
@@ -30,11 +39,34 @@
     },
     "fileAssociations": [
       {
-        "ext": ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "tif", "tiff", "psd", "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2"],
+        "ext": [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "webp",
+          "bmp",
+          "heic",
+          "heif",
+          "tif",
+          "tiff",
+          "psd",
+          "dng",
+          "cr2",
+          "cr3",
+          "nef",
+          "arw",
+          "raf",
+          "orf",
+          "rw2"
+        ],
         "name": "Immagine",
         "role": "Viewer",
         "rank": "Alternate"
       }
+    ],
+    "asarUnpack": [
+      "node_modules/exiftool-vendored.pl/**"
     ]
   }
 }

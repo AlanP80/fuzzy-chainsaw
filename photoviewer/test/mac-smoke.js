@@ -67,6 +67,22 @@ const say = (...a) => console.log('[test]', ...a);
     if ((r.img || '').startsWith('ERRORE')) problems.push('anteprima: ' + path.basename(f));
   }
 
+  // Stelle ed etichette: scrittura e rilettura (JPG dentro il file, CR2 nel .xmp affiancato)
+  const rateTargets = files.filter(f => /\.(jpe?g|tif|cr2)$/i.test(f));
+  const before = Object.fromEntries(rateTargets.map(f => [f, fs.statSync(f).mtimeMs]));
+  for (const [i, f] of rateTargets.entries()) {
+    const want = { rating: (i % 5) + 1, label: i % 2 ? 'Green' : 'Seleziona' };
+    const res = await win.evaluate(([p, ch]) => window.api.writeMeta([p], ch), [f, want]);
+    const back = (await win.evaluate(p => window.api.readMeta([p]), f))[f] || {};
+    const kept = Math.abs(fs.statSync(f).mtimeMs - before[f]) < 1500;
+    say('stelle:', path.basename(f), JSON.stringify(want), '→', JSON.stringify(back), res.ok ? '' : 'ERRORE ' + res.error, kept ? 'data conservata' : 'DATA CAMBIATA');
+    if (!res.ok || back.rating !== want.rating || back.label !== want.label) problems.push('stelle: ' + path.basename(f));
+    if (!kept) problems.push('data cambiata: ' + path.basename(f));
+  }
+  const sidecars = fs.readdirSync(photos).filter(f => /\.xmp$/i.test(f));
+  say('file .xmp creati:', sidecars.join(', ') || '-');
+  if (rateTargets.some(f => /\.cr2$/i.test(f)) && !sidecars.length) problems.push('.xmp del RAW non creato');
+
   // Clic sulla prima miniatura → viewer
   const first = await win.$('.tile.img');
   if (first) {

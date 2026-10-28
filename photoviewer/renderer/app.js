@@ -16,7 +16,7 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const DEFAULTS = {
-  thumbSize: 180, sort: 'name', sortDir: 1, filter: 'all', pairRaw: true,
+  thumbSize: 180, sort: 'name', sortDir: 1, filter: 'all', pairRaw: true, ratingFilter: 'all', labelFilter: 'all', labelNames: {},
   favorites: [], recents: [], lastDir: null, sidebar: true, showInfo: false, slideshowSec: 4
 };
 
@@ -34,8 +34,22 @@ const S = {
   thumbJobs: new Map(),   // chiave → Promise<url|null>
   thumbDone: new Map(),   // chiave → url già pronto
   previewDone: new Map(), // chiave → url a piena risoluzione già pronto
-  exif: new Map()
+  exif: new Map(),
+  meta: new Map(),        // chiave file → { rating, label, color }
+  tiles: new Map()        // chiave elemento → miniatura nella griglia
 };
+
+// ---------- Stelle ed etichette ----------
+const LABELS = [
+  { id: 'red', name: 'Rossa', key: '⌘6' },
+  { id: 'yellow', name: 'Gialla', key: '⌘7' },
+  { id: 'green', name: 'Verde', key: '⌘8' },
+  { id: 'blue', name: 'Blu', key: '⌘9' },
+  { id: 'purple', name: 'Viola', key: '' }
+];
+const DEFAULT_LABEL_TEXT = { red: 'Red', yellow: 'Yellow', green: 'Green', blue: 'Blue', purple: 'Purple' };
+const labelName = c => (LABELS.find(l => l.id === c) || {}).name || '';
+const starsText = n => '★'.repeat(n) + '☆'.repeat(5 - n);
 
 const ICONS = {
   photo: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg>',
@@ -82,7 +96,8 @@ function toast(msg) {
 // ---------- Barra laterale ----------
 function sideItem(entry, icon, kind) {
   const active = S.listing && S.listing.path === entry.path;
-  return `<div class="side-item${active ? ' active' : ''}" data-path="${esc(entry.path)}" data-kind="${kind}" title="${esc(entry.path)}">${ICONS[icon] || ICONS.folder}<span>${esc(entry.name)}</span></div>`;
+  const x = kind === 'recent' ? '<button class="side-x" title="Togli dai Recenti">×</button>' : '';
+  return `<div class="side-item${active ? ' active' : ''}" data-path="${esc(entry.path)}" data-kind="${kind}" title="${esc(entry.path)}">${ICONS[icon] || ICONS.folder}<span>${esc(entry.name)}</span>${x}</div>`;
 }
 
 function renderSidebar() {
@@ -96,26 +111,47 @@ function renderSidebar() {
   html += '<div class="side-title">Cloud</div>';
   html += S.loc.cloud.length ? S.loc.cloud.map(c => sideItem(c, 'cloud', 'cloud')).join('') : '<div class="side-empty">Nessuna cartella cloud trovata</div>';
   if (S.loc.volumes.length) html += '<div class="side-title">Dischi</div>' + S.loc.volumes.map(v => sideItem(v, 'disk', 'disk')).join('');
-  if (recents.length) html += '<div class="side-title">Recenti</div>' + recents.map(p => sideItem({ path: p, name: p.split('/').pop() || p }, 'clock', 'recent')).join('');
+  if (recents.length) {
+    html += '<div class="side-title">Recenti<button class="side-clear" title="Togli tutte le cartelle dall\'elenco Recenti (le cartelle non vengono cancellate)">Cancella</button></div>';
+    html += recents.map(p => sideItem({ path: p, name: p.split('/').pop() || p }, 'clock', 'recent')).join('');
+  }
   $('#side-content').innerHTML = html;
 }
 
 $('#side-content').addEventListener('click', e => {
+  if (e.target.closest('.side-clear')) { clearRecents(); return; }
   const it = e.target.closest('.side-item');
-  if (it) navigate(it.dataset.path);
+  if (!it) return;
+  if (e.target.closest('.side-x')) { removeRecent(it.dataset.path); return; }
+  navigate(it.dataset.path);
 });
+
+// I Recenti sono solo un elenco: togliere una voce non tocca cartelle né foto
+function removeRecent(p) {
+  saveSetting({ recents: (S.settings.recents || []).filter(x => x !== p) });
+  renderSidebar();
+}
+function clearRecents() {
+  saveSetting({ recents: [] });
+  renderSidebar();
+  toast('Elenco Recenti cancellato (cartelle e foto restano dove sono)');
+}
 $('#side-content').addEventListener('contextmenu', async e => {
   const it = e.target.closest('.side-item');
   if (!it) return;
   e.preventDefault();
   const p = it.dataset.path;
   const isFav = (S.settings.favorites || []).some(f => f.path === p);
+  const isRecent = it.dataset.kind === 'recent';
   const choice = await api.contextMenu([
     { id: 'open', label: 'Apri' },
     isFav ? { id: 'unfav', label: 'Rimuovi dai Preferiti' } : { id: 'fav', label: 'Aggiungi ai Preferiti' },
-    { id: 'finder', label: 'Mostra nel Finder' }
+    { id: 'finder', label: 'Mostra nel Finder' },
+    ...(isRecent ? ['-', { id: 'unrecent', label: 'Togli dai Recenti' }, { id: 'clear-recents', label: 'Cancella l\'elenco Recenti' }] : [])
   ]);
   if (choice === 'open') navigate(p);
+  if (choice === 'unrecent') removeRecent(p);
+  if (choice === 'clear-recents') clearRecents();
   if (choice === 'fav' || choice === 'unfav') toggleFavorite(p);
   if (choice === 'finder') api.reveal(p);
 });
@@ -172,6 +208,7 @@ async function navigate(dir, opts = {}) {
   buildItems();
   computeView();
   renderAll();
+  loadMeta();
   if (!keepScroll) gridWrap.scrollTop = 0;
   if (focusPath) {
     const i = S.view.findIndex(it => it.files.some(f => f.path === focusPath));
@@ -275,27 +312,199 @@ function computeView() {
   let v = S.items.filter(it => {
     if (q && !it.files.some(f => f.name.toLowerCase().includes(q))) return false;
     switch (filter) {
-      case 'raw': return !!it.raw;
-      case 'jpg': return it.files.some(isJpg);
-      case 'tiff': return it.files.some(isTiff);
-      case 'other': return !it.raw && !it.files.some(f => isJpg(f) || isTiff(f));
-      default: return true;
+      case 'raw': if (!it.raw) return false; break;
+      case 'jpg': if (!it.files.some(isJpg)) return false; break;
+      case 'tiff': if (!it.files.some(isTiff)) return false; break;
+      case 'other': if (it.raw || it.files.some(f => isJpg(f) || isTiff(f))) return false; break;
+      default: break;
     }
+    const m = itemMeta(it);
+    const rf = S.settings.ratingFilter;
+    if (rf === '0' && m.rating > 0) return false;
+    if (rf !== 'all' && rf !== '0' && m.rating < Number(rf)) return false;
+    const lf = S.settings.labelFilter;
+    if (lf === 'none' && m.color) return false;
+    if (lf === 'any' && !m.color) return false;
+    if (lf !== 'all' && lf !== 'none' && lf !== 'any' && m.color !== lf) return false;
+    return true;
   });
   const byName = (a, b) => collator.compare(a.name, b.name);
   const cmp = {
     name: byName,
     date: (a, b) => a.mtime - b.mtime || byName(a, b),
     type: (a, b) => collator.compare(a.badge || 'JPG', b.badge || 'JPG') || byName(a, b),
-    size: (a, b) => a.size - b.size || byName(a, b)
+    size: (a, b) => a.size - b.size || byName(a, b),
+    rating: (a, b) => itemMeta(a).rating - itemMeta(b).rating || byName(a, b)
   }[sort] || byName;
   v.sort((a, b) => cmp(a, b) * sortDir);
   S.view = v;
   S.sel = keepKey ? v.findIndex(it => it.key === keepKey) : -1;
 }
 
+
+// ---------- Stelle ed etichette: lettura, visualizzazione, scrittura ----------
+const EMPTY_META = { rating: 0, label: '', color: null };
+const fileMeta = f => S.meta.get(thumbKey(f)) || null;
+
+// Per le coppie RAW+JPG vale il primo dei due che ha un dato
+function itemMeta(it) {
+  const ms = it.files.map(fileMeta);
+  const rating = (ms.find(m => m && m.rating > 0) || EMPTY_META).rating;
+  const lm = ms.find(m => m && m.color) || EMPTY_META;
+  return { rating, label: lm.label, color: lm.color, loaded: ms.every(Boolean) };
+}
+
+let metaToken = 0;
+async function loadMeta() {
+  const token = ++metaToken;
+  const files = ((S.listing && S.listing.files) || []).filter(f => !S.meta.has(thumbKey(f)));
+  for (let i = 0; i < files.length; i += 40) {
+    const chunk = files.slice(i, i + 40);
+    const res = await api.readMeta(chunk.map(f => f.path));
+    if (token !== metaToken) return;
+    for (const f of chunk) S.meta.set(thumbKey(f), res[f.path] || EMPTY_META);
+    learnLabelNames(Object.values(res));
+    for (const it of S.items) if (it.files.some(f => chunk.includes(f))) refreshItemMeta(it);
+  }
+  const st = S.settings;
+  if (files.length && (st.ratingFilter !== 'all' || st.labelFilter !== 'all' || st.sort === 'rating')) {
+    computeView();
+    renderGrid();
+    if (V.open && V.item) { const i = S.view.indexOf(V.item); if (i >= 0) { V.idx = i; updateViewerBar(); } }
+  }
+}
+
+// Ricorda i nomi delle etichette già presenti nelle foto (es. quelli di Bridge in italiano)
+function learnLabelNames(list) {
+  const names = { ...(S.settings.labelNames || {}) };
+  let changed = false;
+  for (const m of list) {
+    if (m && m.color && m.color !== 'other' && !names[m.color]) { names[m.color] = m.label; changed = true; }
+  }
+  if (changed) saveSetting({ labelNames: names });
+}
+const labelTextFor = c => (S.settings.labelNames || {})[c] || DEFAULT_LABEL_TEXT[c];
+
+function metaRowHtml() {
+  return '<div class="meta"><span class="lbl" title="Etichetta"></span><span class="stars">' +
+    [1, 2, 3, 4, 5].map(n => `<i data-r="${n}" title="${n} ${n === 1 ? 'stella' : 'stelle'}">★</i>`).join('') + '</span></div>';
+}
+
+function paintStars(container, rating) {
+  container.querySelectorAll('i').forEach(el => el.classList.toggle('on', Number(el.dataset.r) <= rating));
+}
+
+function paintTileMeta(t, it) {
+  const m = itemMeta(it);
+  t.dataset.rating = m.rating;
+  if (m.color) t.dataset.label = m.color; else delete t.dataset.label;
+  paintStars(t.querySelector('.stars'), m.rating);
+  t.querySelector('.lbl').title = m.color ? `Etichetta: ${labelName(m.color) || m.label}` : 'Etichetta';
+}
+
+function refreshItemMeta(it) {
+  const t = S.tiles.get(it.key);
+  if (t) paintTileMeta(t, it);
+  if (V.open && V.item === it) { paintViewerMeta(); if (S.settings.showInfo) renderInfo(); }
+}
+
+function currentItem() {
+  return V.open ? V.item : S.view[S.sel];
+}
+
+// Scrive su tutti i file dell'elemento (per le coppie: RAW e JPG)
+async function applyMeta(it, change) {
+  if (!it) { toast('Seleziona prima una foto'); return; }
+  const before = it.files.map(f => [thumbKey(f), fileMeta(f)]);
+  for (const f of it.files) {
+    const old = fileMeta(f) || EMPTY_META;
+    const next = { ...old };
+    if (change.rating !== undefined) next.rating = change.rating;
+    if (change.label !== undefined) { next.label = change.label; next.color = change.color || null; }
+    S.meta.set(thumbKey(f), next);
+  }
+  refreshItemMeta(it);
+  const res = await api.writeMeta(it.files.map(f => f.path), { rating: change.rating, label: change.label });
+  if (!res || !res.ok) {
+    for (const [k, m] of before) { if (m) S.meta.set(k, m); else S.meta.delete(k); }
+    refreshItemMeta(it);
+    toast(`Non riesco a salvare: ${(res && res.error) || 'errore sconosciuto'}`);
+    return;
+  }
+  // Le date restano uguali, la dimensione può cambiare
+  for (const f of it.files) {
+    const st = res.stats && res.stats[f.path];
+    if (st) { f.size = st.size; f.mtime = st.mtime; }
+    if (res.meta && res.meta[f.path]) S.meta.set(thumbKey(f), res.meta[f.path]);
+  }
+  it.size = it.files.reduce((a, f) => a + f.size, 0);
+  refreshItemMeta(it);
+}
+
+function setRating(it, n) {
+  if (!it) { toast('Seleziona prima una foto'); return; }
+  n = clamp(n, 0, 5);
+  if (n === itemMeta(it).rating) return;
+  applyMeta(it, { rating: n });
+  toast(n ? `${starsText(n)}  ${n} ${n === 1 ? 'stella' : 'stelle'}` : 'Nessuna stella');
+}
+
+function setLabel(it, color) {
+  if (!it) { toast('Seleziona prima una foto'); return; }
+  // Come in Bridge: riassegnare la stessa etichetta la toglie
+  if (color && itemMeta(it).color === color) color = null;
+  applyMeta(it, color ? { label: labelTextFor(color), color } : { label: '', color: null });
+  toast(color ? `Etichetta ${labelName(color).toLowerCase()}` : 'Etichetta tolta');
+}
+
+function metaMenus(it) {
+  const m = itemMeta(it);
+  return [
+    { label: 'Valutazione', submenu: [0, 1, 2, 3, 4, 5].map(n => ({ id: `rate:${n}`, label: n ? '★'.repeat(n) : 'Nessuna stella', checked: m.rating === n })) },
+    { label: 'Etichetta', submenu: [
+      ...LABELS.map(l => ({ id: `label:${l.id}`, label: l.name, checked: m.color === l.id })),
+      '-', { id: 'label:none', label: 'Nessuna etichetta', checked: !m.color }
+    ] }
+  ];
+}
+
+function runMetaAction(action, it) {
+  if (!action) return false;
+  if (action.startsWith('rate:')) {
+    const v = action.slice(5);
+    const cur = it ? itemMeta(it).rating : 0;
+    setRating(it, v === '+' ? cur + 1 : v === '-' ? cur - 1 : Number(v));
+    return true;
+  }
+  if (action.startsWith('label:')) {
+    const c = action.slice(6);
+    setLabel(it, c === 'none' ? null : c);
+    return true;
+  }
+  return false;
+}
+
+async function labelPopup(it) {
+  const m = itemMeta(it);
+  const c = await api.contextMenu([
+    ...LABELS.map(l => ({ id: `label:${l.id}`, label: l.name, checked: m.color === l.id })),
+    '-', { id: 'label:none', label: 'Nessuna etichetta', checked: !m.color }
+  ]);
+  runMetaAction(c, it);
+}
+
+function paintViewerMeta() {
+  const it = V.item;
+  if (!it) return;
+  const m = itemMeta(it);
+  paintStars($('#v-stars'), m.rating);
+  const lb = $('#v-label');
+  if (m.color) lb.dataset.label = m.color; else delete lb.dataset.label;
+  lb.title = m.color ? `Etichetta: ${labelName(m.color) || m.label} (clic per cambiare)` : 'Etichetta colore (⌘6–⌘9)';
+}
+
 // ---------- Miniature ----------
-const thumbKey = f => `${f.path}|${f.mtime}|${f.size}`;
+const thumbKey = f => `${f.path}|${Math.round(f.mtime)}`;
 
 function getThumb(f) {
   const k = thumbKey(f);
@@ -352,6 +561,7 @@ function renderGrid() {
     t.innerHTML = `<div class="thumb">${ICONS.folder}</div><div class="name">${esc(f.name)}</div>`;
     frag.appendChild(t);
   }
+  S.tiles.clear();
   S.view.forEach((it, i) => {
     const t = document.createElement('div');
     t.className = 'tile img' + (i === S.sel ? ' sel' : '');
@@ -359,7 +569,9 @@ function renderGrid() {
     t.title = it.pair ? it.files.map(f => f.name).join(' + ') : it.name;
     t._item = it;
     const label = (it.badge || it.display.ext.toUpperCase());
-    t.innerHTML = `<div class="thumb"><div class="ph">${esc(label)}</div><img alt="" draggable="false">${it.badge ? `<span class="badge ${it.badgeClass}">${esc(it.badge)}</span>` : ''}</div><div class="name">${esc(it.name)}</div>`;
+    t.innerHTML = `<div class="thumb"><div class="ph">${esc(label)}</div><img alt="" draggable="false">${it.badge ? `<span class="badge ${it.badgeClass}">${esc(it.badge)}</span>` : ''}</div><div class="name">${esc(it.name)}</div>${metaRowHtml()}`;
+    S.tiles.set(it.key, t);
+    paintTileMeta(t, it);
     frag.appendChild(t);
     const done = S.thumbDone.get(thumbKey(it.display));
     if (done) setTileImg(t, done); else observer.observe(t);
@@ -415,6 +627,14 @@ grid.addEventListener('click', e => {
   if (!t) return;
   if (t.classList.contains('folder')) { navigate(t.dataset.path); return; }
   const i = +t.dataset.i;
+  const star = e.target.closest('.stars i');
+  if (star) {
+    setSel(i, false);
+    const n = Number(star.dataset.r);
+    setRating(S.view[i], itemMeta(S.view[i]).rating === n ? 0 : n);
+    return;
+  }
+  if (e.target.closest('.meta .lbl')) { setSel(i, false); labelPopup(S.view[i]); return; }
   setSel(i, false);
   openViewer(i);
 });
@@ -452,12 +672,14 @@ function itemMenu(it, withOpen) {
     m.push({ id: 'pix', label: 'Apri in Pixelmator Pro' });
   }
   m.push({ id: 'choose', label: 'Apri con un\'altra app…' }, { id: 'default', label: 'Apri con l\'app predefinita' }, '-',
+    ...metaMenus(it), '-',
     { id: 'finder', label: 'Mostra nel Finder' }, '-',
     { id: 'trash', label: it.pair ? 'Sposta nel Cestino (RAW + JPG)' : 'Sposta nel Cestino' });
   return m;
 }
 
 function runItemAction(c, it, i, shownPath) {
+  if (runMetaAction(c, it)) return;
   const p = shownPath || it.display.path;
   switch (c) {
     case 'view': openViewer(i); break;
@@ -508,6 +730,8 @@ function setThumbSize(v) {
 
 $('#thumbsize').addEventListener('input', e => setThumbSize(+e.target.value));
 $('#filter').addEventListener('change', e => { saveSetting({ filter: e.target.value }); computeView(); renderGrid(); });
+$('#rating-filter').addEventListener('change', e => { saveSetting({ ratingFilter: e.target.value }); computeView(); renderGrid(); });
+$('#label-filter').addEventListener('change', e => { saveSetting({ labelFilter: e.target.value }); computeView(); renderGrid(); });
 $('#sort').addEventListener('change', e => { saveSetting({ sort: e.target.value }); computeView(); renderGrid(); });
 $('#btn-sortdir').addEventListener('click', () => {
   saveSetting({ sortDir: -S.settings.sortDir });
@@ -751,6 +975,7 @@ function updateViewerBar() {
   rj.textContent = V.showRaw ? 'RAW' : 'JPG';
   rj.classList.toggle('on', V.showRaw);
   $('#v-edit').title = `Apri ${it.pair ? (V.showRaw ? 'il RAW' : 'il JPG') + ' ' : ''}in Pixelmator Pro (⌘E)`;
+  paintViewerMeta();
 }
 
 function go(delta) {
@@ -833,6 +1058,9 @@ async function renderInfo() {
     const mp = (V.natW * V.natH / 1e6).toFixed(1).replace('.', ',');
     rows.push(['Dimensioni', `${V.natW} × ${V.natH} px (${mp} MP)`]);
   }
+  const mm = itemMeta(V.item);
+  rows.push(['Valutazione', mm.rating ? `${starsText(mm.rating)}  (${mm.rating})` : 'Nessuna stella']);
+  if (mm.color) rows.push(['Etichetta', `${labelName(mm.color) || 'Altra'}${mm.label && mm.color !== 'other' ? ` · «${mm.label}»` : mm.label ? ` «${mm.label}»` : ''}`]);
   rows.push(['Formato', f.ext.toUpperCase() + (V.item.pair ? ` (coppia RAW + JPG)` : '')]);
   if (x.fileSize) rows.push(['Peso', fmt.size(x.fileSize)]);
   if (x.fileDate) rows.push(['Modificato', fmt.date(x.fileDate)]);
@@ -936,6 +1164,13 @@ stage.addEventListener('contextmenu', async e => {
 
 // Pulsanti del viewer
 $('#v-close').addEventListener('click', closeViewer);
+$('#v-stars').addEventListener('click', e => {
+  const star = e.target.closest('i');
+  if (!star || !V.item) return;
+  const n = Number(star.dataset.r);
+  setRating(V.item, itemMeta(V.item).rating === n ? 0 : n);
+});
+$('#v-label').addEventListener('click', () => { if (V.item) labelPopup(V.item); });
 $('#v-prev').addEventListener('click', () => go(-1));
 $('#v-next').addEventListener('click', () => go(1));
 $('#v-zoomin').addEventListener('click', () => zoomStep(1));
@@ -992,6 +1227,13 @@ document.addEventListener('keydown', e => {
     if (k.startsWith('Arrow')) return;
   }
   if (k === '?') { e.preventDefault(); toggleHelp(true); return; }
+  // Stelle ed etichette (anche dal menu Valutazione)
+  if (cmd && !e.altKey && !e.shiftKey && (/^[0-9]$/.test(k) || k === '.' || k === ',')) {
+    e.preventDefault();
+    const map = { 6: 'label:red', 7: 'label:yellow', 8: 'label:green', 9: 'label:blue', '.': 'rate:+', ',': 'rate:-' };
+    dispatchMeta(map[k] || `rate:${k}`);
+    return;
+  }
   if (cmd && (k === 'e' || k === 'E')) {
     e.preventDefault();
     const it = V.open ? V.item : S.view[S.sel];
@@ -1084,15 +1326,26 @@ api.on('fullscreen', fs => {
   document.body.classList.toggle('fullscreen', fs);
   pokeIdle();
 });
+// La stessa scorciatoia può arrivare sia dalla tastiera sia dal menu: la applico una volta sola
+let lastMeta = { action: '', at: 0 };
+function dispatchMeta(action) {
+  const now = Date.now();
+  if (lastMeta.action === action && now - lastMeta.at < 250) return true;
+  lastMeta = { action, at: now };
+  return runMetaAction(action, currentItem());
+}
+
 api.on('menu', async action => {
+  if (/^(rate|label):/.test(action)) { dispatchMeta(action); return; }
   switch (action) {
+    case 'clear-recents': clearRecents(); break;
     case 'open-folder': {
       const p = await api.chooseFolder();
       if (p) { if (V.open) closeViewer(); navigate(p); }
       break;
     }
     case 'refresh':
-      S.thumbJobs.clear(); S.thumbDone.clear(); S.previewDone.clear(); S.exif.clear();
+      S.thumbJobs.clear(); S.thumbDone.clear(); S.previewDone.clear(); S.exif.clear(); S.meta.clear();
       S.loc = await api.locations();
       reload();
       break;
@@ -1129,6 +1382,8 @@ async function init() {
   document.body.classList.toggle('no-sidebar', !st.sidebar);
   applyThumbSize(st.thumbSize);
   $('#filter').value = st.filter;
+  $('#rating-filter').value = st.ratingFilter;
+  $('#label-filter').value = st.labelFilter;
   $('#sort').value = st.sort;
   $('#pair').checked = !!st.pairRaw;
   $('#btn-sortdir').classList.toggle('desc', st.sortDir < 0);

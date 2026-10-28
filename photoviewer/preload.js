@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   thumb: p => ipcRenderer.invoke('thumb', p),
   preview: (p, urgent) => ipcRenderer.invoke('preview', p, !!urgent),
   exif: p => ipcRenderer.invoke('exif', p),
+  readMeta: paths => ipcRenderer.invoke('meta-read', paths),
+  writeMeta: (paths, change) => ipcRenderer.invoke('meta-write', paths, change),
   openWith: (p, which) => ipcRenderer.invoke('open-with', p, which),
   openDefault: p => ipcRenderer.invoke('open-default', p),
   reveal: p => ipcRenderer.invoke('reveal', p),
