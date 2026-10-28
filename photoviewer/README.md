@@ -12,6 +12,8 @@ Visualizzatore di immagini per Mac: semplice, veloce, senza funzioni di modifica
 - **Presentazione** (Spazio) e **schermo intero** (F).
 - **Apri in Pixelmator Pro** (⌘E), con un'altra app o **Mostra nel Finder**.
 - **Sposta nel Cestino** (⌘⌫), recuperabile dal Cestino del Mac.
+- **Stelle (0–5) ed etichette colore** compatibili con Adobe Bridge e Lightroom: le vedi sotto le miniature e nel viewer, le assegni con un clic o con ⌘0…⌘5 (stelle) e ⌘6…⌘9 (etichette), e puoi filtrare e ordinare per valutazione.
+- **Recenti ripulibili**: × accanto a una cartella o «Cancella» per togliere le voci dall'elenco (cartelle e foto non vengono toccate).
 
 Premi `?` nell'app per vedere tutte le scorciatoie.
 
@@ -36,6 +38,15 @@ In alternativa, da Terminale:
 xattr -dr com.apple.quarantine "/Applications/AP PhotoViewer.app"
 ```
 La prima volta che apri Scrivania, Documenti, Download o un disco esterno, macOS chiede il permesso: rispondi **Consenti**.
+
+## Stelle ed etichette: dove vengono salvate
+Come fa Adobe Bridge, così le ritrovi anche in Bridge, Lightroom e negli altri programmi che leggono l'XMP:
+- **JPG, TIFF, DNG, PSD, PNG, HEIC** → dentro il file stesso;
+- **RAW proprietari** (CR2, NEF, ARW…) → nel file `.xmp` accanto alla foto (es. `IMG_0001.xmp`), che conserva anche le eventuali regolazioni di Camera Raw.
+
+La **data di modifica** dei file resta quella originale. Le etichette usano gli stessi nomi già presenti nelle tue foto (es. «Seleziona», «Approvato» di Bridge in italiano); se non ce ne sono, usa quelli standard di Lightroom («Red», «Green»…).
+Le valutazioni date in **Aperture** o **Foto** di Apple restano nelle loro librerie e non sono visibili qui.
+Spostando nel Cestino un RAW, anche il suo `.xmp` va nel Cestino.
 
 ## Da sapere
 - I RAW vengono mostrati come li sviluppa macOS: le modifiche fatte in Lightroom/Camera Raw (file `.xmp`) non sono visibili.
